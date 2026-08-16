@@ -38,7 +38,7 @@ def probe_audio_duration(audio_path: Path) -> float:
 
 class VoiceEngine:
     def __init__(self, voice: str = None, rate: str = "+5%", pitch: str = "+0Hz"):
-        self.voice = voice or settings.default_voice_pl
+        self.voice = voice or settings.default_voice
         self.rate = rate
         self.pitch = pitch
 

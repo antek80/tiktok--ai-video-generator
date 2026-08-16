@@ -24,16 +24,16 @@ TOPICS_FILE = BASE_DIR / "topics_queue.json"
 HISTORY_FILE = BASE_DIR / "posted_history.json"
 
 DEFAULT_TOPICS_POOL = [
-    "Niewyjaśniona tajemnica Przełęczy Diatłowa",
-    "Dlaczego nikt nie może wejść do grobowca pierwszego cesarza Chin",
-    "Najgłębsze miejsce na Ziemi i dźwięki z Rowu Mariańskiego",
-    "Eksperyment Filadelfia – prawda czy wojskowa mistyfikacja",
-    "Co naprawdę znajduje się pod lodami Antarktydy",
-    "Zaginięcie statku Mary Celeste – załoga zniknęła bez śladu",
-    "Tajemniczy sygnał 'Wow!' z głębokiego kosmosu",
-    "Dlaczego ludzie widzą te same sny podczas paraliżu sennego",
-    "Najbardziej strzeżone archiwum na świecie – Tajne Archiwa Watykanu",
-    "Czarne dziury i co dzieje się za horyzontem zdarzeń"
+    "The Bizarre Mystery of the Dyatlov Pass Incident",
+    "Why No One Is Allowed Inside China's First Emperor Tomb",
+    "The Terrifying Bloop Sound Recorded in the Deep Ocean",
+    "The Philadelphia Experiment – Secret Teleportation or Hoax",
+    "What Is Hidden Deep Under the Ice of Antarctica",
+    "The Ghost Ship Mary Celeste – The Crew That Vanished Into Thin Air",
+    "The 1977 Wow Signal – Our Only Contact With Aliens",
+    "Why Everyone Sees the Same Entity During Sleep Paralysis",
+    "Inside the Secret Underground Vaults of the Vatican",
+    "What Actually Happens When You Cross a Black Hole Event Horizon"
 ]
 
 def load_posted_history() -> List[dict]:
@@ -50,11 +50,11 @@ def save_posted_history(history: List[dict]):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def get_next_topic() -> str:
-    """Pobiera kolejny unikalny temat z kolejki lub generuje świeży przez Gemini."""
+    """Picks next unposted topic or generates a fresh high-retention English topic via Gemini."""
     history = load_posted_history()
     used_topics = {entry.get("topic") for entry in history}
 
-    # 1. Sprawdź plik kolejki
+    # 1. Check custom queue file
     if TOPICS_FILE.exists():
         try:
             with open(TOPICS_FILE, "r", encoding="utf-8") as f:
@@ -63,53 +63,53 @@ def get_next_topic() -> str:
                 if t not in used_topics:
                     return t
         except Exception as e:
-            logger.warning(f"Błąd odczytu {TOPICS_FILE}: {e}")
+            logger.warning(f"Error reading {TOPICS_FILE}: {e}")
 
-    # 2. Wybierz z puli domyślnej
+    # 2. Pick from default pool
     for t in DEFAULT_TOPICS_POOL:
         if t not in used_topics:
             return t
 
-    # 3. Jeśli wszystko wyczerpane, zapytaj Gemini o nowy temat
+    # 3. Dynamic LLM Generation for endless fresh topics
     if settings.gemini_api_key:
         try:
             from google import genai
             client = genai.Client(api_key=settings.gemini_api_key)
-            prompt = f"Zaproponuj 1 krótki, niezwykle wciągający i intrygujący temat na film storytelling TikTok (tajemnica, niewyjaśniona historia, kosmos, archeologia). Zwróć tylko sam tytuł tematu. Nie powtarzaj tych: {list(used_topics)[-10:]}"
+            prompt = f"Generate ONE short, viral, mind-blowing storytelling topic in English for TikTok (unexplained mysteries, deep ocean, cosmos, ancient secrets, psychology). Return ONLY the title. Do not repeat these: {list(used_topics)[-10:]}"
             res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
             new_topic = res.text.strip().strip('"').strip("'")
             if new_topic:
                 return new_topic
         except Exception as e:
-            logger.warning(f"Błąd generowania tematu z Gemini: {e}")
+            logger.warning(f"Error generating topic with Gemini: {e}")
 
-    return f"Niezwykła tajemnica z przeszłości #{len(history) + 1}"
+    return f"Untold Dark Mystery of History #{len(history) + 1}"
 
 async def run_daily_job():
-    """Główna funkcja wykonująca codzienne generowanie i publikację."""
-    logger.info("=== 🤖 Uruchamianie dziennego Agenta TikTok ===")
+    """Main execution function for daily autonomous video generation and posting."""
+    logger.info("=== 🤖 Starting TikTok Daily Autonomous Agent ===")
     
-    # 1. Sprawdź sesję
+    # 1. Check Session
     sm = SessionManager()
     is_logged = await sm.is_logged_in()
     if not is_logged:
-        logger.warning("Brak aktywnej sesji TikTok. Otwieram okno logowania...")
+        logger.warning("No active TikTok session detected. Opening login browser...")
         await sm.login_interactively()
         is_logged = await sm.is_logged_in()
         if not is_logged:
-            logger.error("❌ Logowanie nie powiodło się lub zostało przerwane.")
+            logger.error("❌ Login failed or was cancelled.")
             return False
 
-    # 2. Pobierz unikalny temat
+    # 2. Pick Unique English Topic
     topic = get_next_topic()
-    logger.info(f"Wybrany temat na dziś: '{topic}'")
+    logger.info(f"Selected English topic for today: '{topic}'")
 
-    # 3. Generuj wideo
+    # 3. Generate High-Retention Video in English
     pipeline = Pipeline()
-    result = pipeline.generate_video(topic=topic, language="pl")
-    logger.info(f"Wideo wygenerowane pomyślnie: {result.video_path} (czas: {result.duration:.2f}s)")
+    result = pipeline.generate_video(topic=topic, language="en", voice=settings.default_voice_en)
+    logger.info(f"Video generated successfully: {result.video_path} (duration: {result.duration:.2f}s)")
 
-    # 4. Opublikuj na TikToku (bez etykiety AI)
+    # 4. Publish to TikTok (without AI label)
     uploader = TikTokUploader(headless=False)
     success = await uploader.upload_video(
         video_path=result.video_path,
@@ -119,21 +119,22 @@ async def run_daily_job():
         declare_ai=False
     )
 
-    # 5. Zapisz historię
+    # 5. Record History
     if success:
         history = load_posted_history()
         history.append({
             "timestamp": datetime.now().isoformat(),
             "topic": topic,
+            "language": "en",
             "video_path": str(result.video_path),
             "caption": result.caption,
             "status": "published"
         })
         save_posted_history(history)
-        logger.info(f"🎉 Codzienne wideo dla tematu '{topic}' zostało opublikowane i zapisane w historii!")
+        logger.info(f"🎉 Daily video for topic '{topic}' published to TikTok and recorded in history!")
         return True
     else:
-        logger.error(f"⚠️ Nie udało się opublikować wideo dla tematu '{topic}'.")
+        logger.error(f"⚠️ Failed to publish video for topic '{topic}'.")
         return False
 
 if __name__ == "__main__":

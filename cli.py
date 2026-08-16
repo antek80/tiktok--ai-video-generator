@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional
 import typer
@@ -20,69 +21,77 @@ console = Console()
 
 @app.command()
 def generate(
-    topic: str = typer.Option(..., "--topic", "-t", help="Temat lub idea wideo (np. 'Fakty o czarnych dziurach')"),
-    lang: str = typer.Option("pl", "--lang", "-l", help="Język lektora: 'pl' lub 'en'"),
-    voice: Optional[str] = typer.Option(None, "--voice", "-v", help="Nazwa głosu Edge-TTS (np. pl-PL-MarekNeural)"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", help="Klucz Gemini API (opcjonalny)")
+    topic: str = typer.Option(..., "--topic", "-t", help="Video topic / hook concept (e.g. 'The Dyatlov Pass Mystery')"),
+    lang: str = typer.Option("en", "--lang", "-l", help="Voiceover language: 'en' (default) or 'pl'"),
+    voice: Optional[str] = typer.Option(None, "--voice", "-v", help="Edge-TTS voice (e.g. en-US-ChristopherNeural)"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", "-k", help="Gemini API Key (optional)")
 ):
     """
-    Generuje pionowe wideo (9:16) z filtrami Anti-Shadowban, dynamicznymi napisami i montażem.
+    Generates high-retention vertical 9:16 video with Anti-Shadowban filters, dynamic subtitles, and audio.
     """
-    console.print(Panel.fit(f"[bold cyan]🎬 Generowanie wideo TikTok dla tematu:[/bold cyan] [yellow]{topic}[/yellow]"))
+    console.print(Panel.fit(f"[bold cyan]🎬 Generating TikTok Video for Topic:[/bold cyan] [yellow]{topic}[/yellow]"))
     
     pipeline = Pipeline(gemini_api_key=api_key or settings.gemini_api_key, voice=voice)
     result = pipeline.generate_video(topic=topic, language=lang, voice=voice)
     
-    table = Table(title="✅ Wygenerowano pomyślnie!", show_header=True, header_style="bold magenta")
-    table.add_column("Parametr", style="dim", width=18)
-    table.add_column("Wartość")
+    table = Table(title="✅ Video Generated Successfully!", show_header=True, header_style="bold magenta")
+    table.add_column("Property", style="dim", width=18)
+    table.add_column("Value")
     
-    table.add_row("Plik wideo", str(result.video_path))
-    table.add_row("Czas trwania", f"{result.duration:.2f} s")
-    table.add_row("Hook (3 sekundy)", result.script.hook)
-    table.add_row("Opis (Caption)", result.caption)
-    table.add_row("Hashtagi", " ".join(result.hashtags))
+    table.add_row("Video Path", str(result.video_path))
+    table.add_row("Duration", f"{result.duration:.2f} s")
+    table.add_row("Hook (3s)", result.script.hook)
+    table.add_row("Caption", result.caption)
+    table.add_row("Hashtags", " ".join(result.hashtags))
     
     console.print(table)
-    console.print(f"\n[green]Aby opublikować na TikToku, uruchom:[/green] [bold]python cli.py upload --video {result.video_path}[/bold]")
+    console.print(f"\n[green]To publish to TikTok, run:[/green] [bold]python cli.py upload --video {result.video_path}[/bold]")
 
 @app.command()
 def login():
     """
-    Otwiera okno przeglądarki, aby zalogować się na konto TikTok i zapisać trwałą sesję.
+    Opens Google Chrome to log into TikTok and save persistent session cookies.
     """
-    console.print("[bold yellow]Uruchamianie przeglądarki w trybie logowania...[/bold yellow]")
+    console.print("[bold yellow]Launching official Google Chrome for login...[/bold yellow]")
     sm = SessionManager()
     asyncio.run(sm.login_interactively())
 
 @app.command()
 def status():
     """
-    Sprawdza, czy sesja TikTok jest aktywna i zalogowana.
+    Checks if active TikTok session is valid and authenticated.
     """
-    console.print("[bold cyan]Sprawdzanie stanu sesji TikTok...[/bold cyan]")
+    console.print("[bold cyan]Checking TikTok session authentication status...[/bold cyan]")
     sm = SessionManager()
     is_logged = asyncio.run(sm.is_logged_in())
     if is_logged:
-        console.print("[bold green]✅ Sesja jest aktywna i zalogowana! Agent może publikować.[/bold green]")
+        console.print("[bold green]✅ Session is active and authenticated! Ready to publish.[/bold green]")
     else:
-        console.print("[bold red]❌ Brak aktywnej sesji. Uruchom `python cli.py login`, aby się zalogować.[/bold red]")
+        console.print("[bold red]❌ No active session found. Run `python cli.py login` to authenticate.[/bold red]")
+
+@app.command("open")
+def open_tiktok():
+    """
+    Opens Google Chrome to TikTok Creator Center Content dashboard.
+    """
+    console.print("[bold cyan]Opening TikTok Creator Center in Google Chrome...[/bold cyan]")
+    subprocess.Popen(["open", "-a", "Google Chrome", "https://www.tiktok.com/creator-center/content"])
 
 @app.command()
 def upload(
-    video: Path = typer.Option(..., "--video", "-v", help="Ścieżka do pliku .mp4"),
-    caption: Optional[str] = typer.Option(None, "--caption", "-c", help="Opis wideo"),
-    tags: Optional[str] = typer.Option(None, "--tags", help="Hashtagi oddzielone spacją (np. '#fyp #viral')"),
-    publish: bool = typer.Option(True, "--publish/--draft", help="Opublikuj natychmiast lub zapisz wersję roboczą"),
-    declare_ai: bool = typer.Option(False, "--declare-ai/--no-declare-ai", help="Oznacz film oficjalną etykietą AI na TikToku")
+    video: Path = typer.Option(..., "--video", "-v", help="Path to .mp4 video file"),
+    caption: Optional[str] = typer.Option(None, "--caption", "-c", help="Video caption"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Space-separated hashtags (e.g. '#fyp #viral')"),
+    publish: bool = typer.Option(True, "--publish/--draft", help="Publish immediately or save as draft"),
+    declare_ai: bool = typer.Option(False, "--declare-ai/--no-declare-ai", help="Tag with AI-generated content label")
 ):
     """
-    Autonomicznie publikuje wideo na TikToku za pomocą Playwright Stealth.
+    Publishes a video to TikTok autonomously using stealth browser automation.
     """
-    console.print(Panel.fit(f"[bold blue]🚀 Autonomiczny upload wideo na TikTok:[/bold blue] {video.name}"))
+    console.print(Panel.fit(f"[bold blue]🚀 Autonomous Upload to TikTok:[/bold blue] {video.name}"))
     
-    hashtags_list = tags.split() if tags else ["#fyp", "#viral", "#dlaciebie"]
-    cap = caption or f"Niesamowite wideo! Sprawdź do końca 🔥"
+    hashtags_list = tags.split() if tags else ["#fyp", "#viral", "#foryou", "#facts"]
+    cap = caption or f"Mind-blowing facts! Wait for the end 🔥"
     
     uploader = TikTokUploader(headless=False)
     success = asyncio.run(uploader.upload_video(
@@ -94,29 +103,27 @@ def upload(
     ))
     
     if success:
-        console.print("[bold green]🎉 Wideo zostało pomyślnie przesłane na TikTok![/bold green]")
+        console.print("[bold green]🎉 Video successfully uploaded and posted on TikTok![/bold green]")
     else:
-        console.print("[bold red]❌ Wystąpił błąd podczas przesyłania wideo.[/bold red]")
+        console.print("[bold red]❌ Error occurred during video upload.[/bold red]")
 
 @app.command()
 def auto(
-    topic: str = typer.Option(..., "--topic", "-t", help="Temat wideo"),
-    lang: str = typer.Option("pl", "--lang", "-l", help="Język lektora"),
-    publish: bool = typer.Option(True, "--publish/--draft", help="Automatycznie opublikuj po wyrenderowaniu"),
-    declare_ai: bool = typer.Option(False, "--declare-ai/--no-declare-ai", help="Oznacz film oficjalną etykietą AI na TikToku")
+    topic: str = typer.Option(..., "--topic", "-t", help="Video topic in English"),
+    lang: str = typer.Option("en", "--lang", "-l", help="Voiceover language: 'en' or 'pl'"),
+    publish: bool = typer.Option(True, "--publish/--draft", help="Publish automatically after rendering"),
+    declare_ai: bool = typer.Option(False, "--declare-ai/--no-declare-ai", help="Tag with AI-generated content label")
 ):
     """
-    Pełny automat: Generuje wideo od zera i natychmiast publikuje je na TikToku.
+    Full Autonomous Flow: Generates video from scratch and posts it to TikTok immediately.
     """
-    console.print(Panel.fit(f"[bold magenta]⚡ AUTO-PIPELINE: Generowanie + Publikacja dla:[/bold magenta] [yellow]{topic}[/yellow]"))
+    console.print(Panel.fit(f"[bold magenta]⚡ AUTO-PIPELINE: Generation + TikTok Post for:[/bold magenta] [yellow]{topic}[/yellow]"))
     
-    # 1. Generowanie
     pipeline = Pipeline()
     result = pipeline.generate_video(topic=topic, language=lang)
-    console.print(f"✅ Wyrenderowano: [green]{result.video_path}[/green]")
+    console.print(f"✅ Rendered: [green]{result.video_path}[/green]")
     
-    # 2. Publikacja
-    console.print("[bold cyan]Przechodzę do automatycznej publikacji...[/bold cyan]")
+    console.print("[bold cyan]Proceeding to autonomous TikTok publication...[/bold cyan]")
     uploader = TikTokUploader(headless=False)
     success = asyncio.run(uploader.upload_video(
         video_path=result.video_path,
@@ -126,18 +133,23 @@ def auto(
         declare_ai=declare_ai
     ))
     
+    if success:
+        console.print("[bold green]🏆 Done! English video generated and published to TikTok![/bold green]")
+    else:
+        console.print("[bold red]⚠️ Video generated, but error occurred during publishing.[/bold red]")
+
 @app.command()
 def daily():
     """
-    Uruchamia codzienną procedurę: dobiera unikalny temat, generuje wideo i publikuje na TikTok.
+    Runs the daily autonomous cycle: picks unposted English topic, generates video, and publishes to TikTok.
     """
     from daily_poster import run_daily_job
-    console.print(Panel.fit("[bold green]🤖 Uruchamianie procedury Daily Autonomous Agent...[/bold green]"))
+    console.print(Panel.fit("[bold green]🤖 Running Daily Autonomous Agent (English)...[/bold green]"))
     success = asyncio.run(run_daily_job())
     if success:
-        console.print("[bold green]🏆 Codzienna publikacja zakończona sukcesem![/bold green]")
+        console.print("[bold green]🏆 Daily English video published successfully![/bold green]")
     else:
-        console.print("[bold red]❌ Błąd podczas codziennej publikacji (sprawdź logs/daily_poster.log).[/bold red]")
+        console.print("[bold red]❌ Error during daily publication cycle (check daily_poster.log).[/bold red]")
 
 if __name__ == "__main__":
     app()

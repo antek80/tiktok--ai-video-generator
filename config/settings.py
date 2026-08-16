@@ -17,9 +17,11 @@ class Settings(BaseModel):
     # Gemini API Key
     gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     
-    # TTS Settings
-    default_voice_pl: str = "pl-PL-MarekNeural"  # Natural Polish male voice (or pl-PL-ZofiaNeural)
-    default_voice_en: str = "en-US-ChristopherNeural"  # Natural English male voice
+    # Language & Voice Settings
+    default_language: str = "en"
+    default_voice: str = "en-US-ChristopherNeural"  # Deep natural cinematic English voice
+    default_voice_pl: str = "pl-PL-MarekNeural"
+    default_voice_en: str = "en-US-ChristopherNeural"
     
     # Video Specifications
     video_width: int = 1080
