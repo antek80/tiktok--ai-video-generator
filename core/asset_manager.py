@@ -5,7 +5,7 @@ import urllib.request
 import urllib.parse
 from pathlib import Path
 from typing import List, Optional
-from PIL import Image, ImageDraw, ImageOps, ImageFilter, ImageStat
+from PIL import Image, ImageDraw, ImageOps, ImageFilter, ImageStat, ImageFont
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -247,6 +247,30 @@ class AssetManager:
 
             # 4. Composite Clean Heart
             canvas.paste(scaled_heart, (hx, hy), scaled_heart)
+
+            # 5. Render Animated CTA Text ("PLEASE LIKE THE VIDEO TO SUPPORT MY WORK ❤️")
+            try:
+                font_path = "/System/Library/Fonts/Supplemental/Impact.ttf"
+                cta_font = ImageFont.truetype(font_path, 44) if Path(font_path).exists() else ImageFont.load_default()
+            except Exception:
+                cta_font = ImageFont.load_default()
+
+            text_line1 = "PLEASE LIKE THE VIDEO"
+            text_line2 = "TO SUPPORT MY WORK ❤️"
+            
+            w1 = draw.textlength(text_line1, font=cta_font)
+            w2 = draw.textlength(text_line2, font=cta_font)
+            tx1 = (video_width - w1) // 2
+            tx2 = (video_width - w2) // 2
+            ty = center_y + (h // 2) + 25
+
+            # Shadow for CTA
+            draw.text((tx1 + 3, ty + 4), text_line1, font=cta_font, fill=(0, 0, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=7)
+            draw.text((tx2 + 3, ty + 56 + 4), text_line2, font=cta_font, fill=(0, 0, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=7)
+
+            # Main CTA Text
+            draw.text((tx1, ty), text_line1, font=cta_font, fill=(255, 255, 255, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=7)
+            draw.text((tx2, ty + 56), text_line2, font=cta_font, fill=(255, 230, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=7)
 
             frame_path = output_dir / f"heart_{f:02d}.png"
             canvas.save(frame_path, "PNG")
