@@ -5,154 +5,173 @@
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-60fps-red.svg)](https://ffmpeg.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A fully autonomous, production-ready AI video generation and scheduled publishing engine designed for **TikTok**, **YouTube Shorts**, and **Instagram Reels**. Built from scratch to produce high-retention vertical videos (9:16) with zero human intervention.
+W pełni autonomiczny, bezobsługowy generator i publikator wiralowych wideo w formacie pionowym (9:16) dla **TikToka**, **YouTube Shorts** i **Instagram Reels**. System tworzy kompletne, 30-sekundowe historie z lektorem, dynamicznymi napisami Hormozi, 60fps gameplayem i animowanym serduszkiem CTA, a następnie sam publikuje je w TikTok Studio.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Główne Funkcje (Co potrafi system)
 
-* **🎮 Pre-bundled 60FPS Gameplay Starter Pack**: 15 curated, copyright-free high-definition background clips (Minecraft Parkour, Subway Surfers, GTA 5 Mega Ramps, CS:GO Surf) included directly in the repo.
-* **🧠 Infinite Topic Engine**: 50+ pre-curated viral mystery/fact topics with automatic Gemini 2.0 Flash generation fallback that never repeats a topic (`posted_history.json`).
-* **💬 Sample-Accurate Hormozi Subtitles**: Dynamic word-by-word yellow highlighted subtitles with zero cumulative timing drift.
-* **❤️ TikTok Double-Tap Like Outro**: 2.0s animated `#FE2C55` vector heart with pulse ripple and high-converting CTA: *"PLEASE LIKE THE VIDEO TO SUPPORT MY WORK ❤️"*.
-* **🛡️ Anti-Shadowban Engine**:
-  * iPhone 15 Pro Apple device metadata spoofing.
-  * 2% film grain filter to break AI hash fingerprinting.
-  * Studio-grade 192kbps stereo audio ducking (BGM drops automatically during speech).
-* **🤖 Autonomous Scheduled Auto-Poster**:
-  * Playwright Stealth browser automation with persistent session storage (`~/.tiktok_automation_session`).
-  * Handles TikTok Studio chunk uploads, transcode waiting (`aria-disabled="false"`), caption entry, and modal confirmations.
-  * 10 daily publication slots out of the box (every ~90 minutes).
+* **🎮 Wbudowany pakiet startowy 60FPS:** 15 gotowych, bezpłatnych teł wideo (Minecraft Parkour, Subway Surfers, GTA 5 Mega Ramps, CS:GO Surf) wgranych bezpośrednio do repozytorium (zero pobierania na start).
+* **🧠 Nieskończony silnik tematów:** 50+ gotowych wiralowych historii z automatycznym fallbackiem do Gemini 2.0 Flash, który tworzy nieskończenie nowe tematy bez powtórzeń (`posted_history.json`).
+* **💬 Precyzyjne napisy karaoke (Hormozi):** Dynamiczne, żółte podświetlanie aktualnie wymawianego słowa co do milisekundy (brak opóźnień audio-wideo).
+* **❤️ TikTok Like Outro CTA:** 2-sekundowa animacja wektora serduszka TikToka z pulsem i napisem: *"PLEASE LIKE THE VIDEO TO SUPPORT MY WORK ❤️"*.
+* **🛡️ Ochrona przed Shadowbanem (Anti-Shadowban):**
+  * Wstrzykiwanie metadanych sprzętowych iPhone 15 Pro (Apple EXIF).
+  * 2% ziarno filmowe rozbijające hashe klatek AI.
+  * Audio Ducking 192kbps stereo (muzyka w tle automatycznie cichnie pod lektora).
+* **🤖 Niezawodny Autopilot 24/7:**
+  * Automatyzacja przeglądarki Playwright Stealth z zapamiętywaniem sesji.
+  * Obsługa przetwarzania w chmurze TikToka (`aria-disabled="false"`), wpisywanie hashtagów i klikanie potwierdzenia.
+  * 10 zaplanowanych publikacji na dobę (co ~90 minut).
 
 ---
 
-## 🚀 Quick Start (3 Steps)
+## 📋 Wymagania wstępne (Przed instalacją)
 
-### Step 1: Clone & Run Setup
+Przed uruchomieniem upewnij się, że masz zainstalowane:
+1. **Python 3.10+** – [Pobierz z python.org](https://www.python.org/downloads/) *(na Windowsie zaznacz opcję „Add Python to PATH”)*.
+2. **Git** – [Pobierz z git-scm.com](https://git-scm.com/).
+3. **FFmpeg** (silnik wideo):
+   * **macOS:** `brew install ffmpeg`
+   * **Ubuntu / Debian:** `sudo apt update && sudo apt install -y ffmpeg`
+   * **Windows:** w PowerShell wpisz: `winget install Gyan.FFmpeg`
+4. **Zwykłe konto TikTok** (na którym będą publikowane materiały).
+
+---
+
+## 🚀 Instrukcja uruchomienia krok po kroku
+
+### KROK 1: Sklonowanie i automatyczna instalacja
+
+Otwórz terminal (lub PowerShell na Windowsie) i wpisz:
+
 ```bash
+# 1. Sklonuj repozytorium
 git clone https://github.com/antek80/tiktok--ai-video-generator.git
 cd tiktok--ai-video-generator
 
-# Run automated 1-click installer (creates venv, installs dependencies & browser)
+# 2. Uruchom automatyczny instalator (macOS / Linux):
 ./setup.sh
 ```
 
-*(Optional)* If you want Gemini AI to generate custom topics dynamically, add your free key to `.env`:
-```bash
-cp .env.example .env
-# Edit .env -> GEMINI_API_KEY=your_key_here
+*(Jeśli jesteś na systemie Windows):*
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+playwright install chromium
+copy .env.example .env
 ```
 
 ---
 
-### Step 2: One-Time TikTok Login
+### KROK 2: Jednorazowe logowanie do TikToka
+
+Aby automat mógł publikować filmy na Twoim profilu, musisz połączyć konto (tylko 1 raz):
+
 ```bash
 ./.venv/bin/python cli.py login
 ```
-* A browser window will open.
-* Log in to your TikTok account (via QR code or login/password).
-* Press **Enter** in the terminal once logged in. Your session cookies will be safely stored locally in `~/.tiktok_automation_session`.
+
+1. Na ekranie pojawi się okno przeglądarki ze stroną logowania TikTok.
+2. Zaloguj się na swoje konto (np. skanując kod QR aplikacją w telefonie lub przez login i hasło).
+3. Gdy zobaczysz swój profil na TikToku, **wróć do terminala i naciśnij ENTER**.
+4. Twoja sesja zostanie trwale zapisana w bezpiecznym katalogu `~/.tiktok_automation_session`.
 
 ---
 
-### Step 3: Start 24/7 Autopilot
-Choose how you want to run the automated publisher:
+### KROK 3: Uruchomienie Autopilota (Wybierz 1 z 3 sposobów)
 
-#### Option A: Cross-Platform Autopilot (Mac, Linux, Windows)
+#### Sposób A: Uniwersalny Autopilot z panelem na żywo (Zalecany – Mac / Windows / Linux)
+Uruchamia interaktywny terminal z licznikiem do kolejnej publikacji i harmonogramem 10 filmów dziennie:
+
 ```bash
-# Starts live terminal dashboard with automatic countdown and 10 daily scheduled slots
+# Uruchomienie ciągłego autopilota:
 ./.venv/bin/python autopilot.py
 
-# Or post immediately once right now:
+# Opcja: opublikuj 1 film od razu na start:
 ./.venv/bin/python autopilot.py --now
 
-# Or post every 60 minutes:
+# Opcja: publikuj regularnie co 60 minut:
 ./.venv/bin/python autopilot.py --interval 60
 ```
 
-#### Option B: Native macOS Background Service (`launchd`)
+#### Sposób B: Cichy proces w tle dla macOS (LaunchAgent)
+Działa niewidocznie w tle systemu macOS nawet po zamknięciu terminala i wyłączeniu okna:
+
 ```bash
-# Installs and enables background daemon that runs even after closing the terminal
+# Instalacja i aktywacja usługi w tle:
 ./setup_daemon.sh
+
+# Wyłączenie / usunięcie usługi:
+launchctl unload ~/Library/LaunchAgents/com.tiktok.autoposter.plist
 ```
 
----
+#### Sposób C: Ręczne generowanie pojedynczych filmów (CLI)
+Możesz w każdej chwili wygenerować i przetestować pojedyncze wideo:
 
-## 🛠️ CLI Command Reference
-
-You can also generate and test videos manually using `cli.py`:
-
-### 1. Generate a Single Video
 ```bash
-# English video with Brian neural voice
-./.venv/bin/python cli.py generate --topic "The Mysterious Bloop Sound" --lang en
+# 1. Wygeneruj film po angielsku (głos Brian):
+./.venv/bin/python cli.py generate --topic "The Deep Ocean Bloop Mystery" --lang en
 
-# Polish video with Marek neural voice
-./.venv/bin/python cli.py generate --topic "Tajemnice Rowu Mariańskiego" --lang pl
-```
+# 2. Wygeneruj film po polsku (głos Marek):
+./.venv/bin/python cli.py generate --topic "Tajemnice Trójkąta Bermudzkiego" --lang pl
 
-### 2. Upload an Existing Video File
-```bash
-./.venv/bin/python cli.py upload \
-  --video output/video_xxxx.mp4 \
-  --caption "The terrifying sound recorded in the deep ocean #mystery #facts #fyp"
-```
-
-### 3. All-In-One Single Command (Generate + Upload)
-```bash
+# 3. Wygeneruj i od razu opublikuj 1 film komendą all-in-one:
 ./.venv/bin/python cli.py auto --topic "The Philadelphia Experiment" --lang en
 ```
 
-### 4. Download 50+ Additional Gameplay Backgrounds
+---
+
+## ⚙️ Konfiguracja (`.env`)
+
+W pliku `.env` możesz dostosować opcje (plik `.env` tworzy się automatycznie ze wzoru `.env.example`):
+
+```ini
+# Opcjonalny klucz Google Gemini AI (do nieskończonego wymyślania nowych tematów)
+# Pobierz darmowy klucz: https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=
+
+# Domyślny głos narracji (darmowy silnik Edge-TTS)
+DEFAULT_VOICE_EN=en-US-BrianNeural
+DEFAULT_VOICE_PL=pl-PL-MarekNeural
+
+# Filtry anty-shadowban
+APPLY_FILM_GRAIN=true
+GRAIN_INTENSITY=2
+SPOOF_DEVICE_METADATA=true
+SPOOFED_MAKE=Apple
+SPOOFED_MODEL=iPhone 15 Pro
+
+# Flaga oznaczania treści AI w TikTok Studio (true/false)
+DECLARE_AI_CONTENT=false
+```
+
+---
+
+## 🎬 Pobieranie dodatkowych teł wideo (Opcjonalne)
+
+W repozytorium masz już 15 wbudowanych teł. Jeśli chcesz pobrać **ponad 50 kolejnych unikalnych klipów 1080x1920 60fps**:
+
 ```bash
-# Automatically downloads & slices 100+ fresh 1080x1920 60fps vertical gameplay clips
 ./.venv/bin/python download_backgrounds.py
 ```
+Skrypt automatycznie pobierze i potnie gameplaye z Minecrafta, GTA 5, Subway Surfers i CS:GO na 60-sekundowe kawałki.
 
 ---
 
-## 📁 Project Architecture
+## ❓ FAQ & Rozwiązywanie problemów
 
-```
-tiktok--ai-video-generator/
-├── agent/                      # Playwright stealth browser & TikTok Studio uploader
-│   ├── browser.py              # Stealth browser session manager
-│   ├── session_manager.py      # Cookie & authentication storage
-│   └── tiktok_uploader.py      # Multi-step upload, transcoding & publish handler
-├── assets/                     # Starter packs, fonts, SFX, and backgrounds
-│   ├── backgrounds/            # 60fps vertical gameplay clips (Minecraft, GTA, Subway Surfers)
-│   ├── fonts/                  # Impact.ttf & fonts for Hormozi subtitles
-│   └── music/                  # Cinematic background ambient music
-├── config/                     # Settings & environment variables
-│   └── settings.py
-├── core/                       # Video generation engine
-│   ├── asset_manager.py        # Outro heart animation & entity card generator
-│   ├── audio_engine.py         # Edge-TTS voiceover & audio ducking
-│   ├── script_generator.py     # Gemini AI & factual story scripts
-│   ├── subtitle_engine.py      # Sample-accurate dynamic Hormozi subtitles
-│   └── video_engine.py         # Quad-layer FFmpeg composition engine
-├── autopilot.py                # 24/7 cross-platform autopilot daemon
-├── daily_poster.py             # Single scheduled slot runner with history tracker
-├── download_backgrounds.py     # YouTube vertical gameplay downloader/slicer
-├── setup.sh                    # 1-click automated environment installer
-├── setup_daemon.sh             # Native macOS launchd daemon installer
-└── requirements.txt            # Python dependencies
-```
+**1. Film ma 0 wyświetleń w pierwszych 30 minutach od publikacji – co robić?**
+* **Niczego nie usuwaj ani nie ukrywaj!** Algorytm TikToka potrzebuje od 30 do 60 minut na przetworzenie wideo i kategoryzację przed wpuszczeniem go do pierwszej grupy testowej widzów (*Initial Test Batch*).
+
+**2. Czy muszę płacić za jakiekolwiek API?**
+* **Nie, 0 zł.** Głosy lektora (Edge-TTS), montaż wideo (FFmpeg), tła i tematy są w 100% darmowe. Klucz Gemini API jest również w 100% bezpłatny w AI Studio.
+
+**3. Gdzie zapisują się gotowe filmy?**
+* Wszystkie wyrenderowane pliki wideo `.mp4` trafiają do katalogu `output/`.
 
 ---
 
-## ⚙️ Configuration (`.env`)
-
-| Variable | Description | Default |
-|---|---|---|
-| `GEMINI_API_KEY` | Google Gemini API key for dynamic story generation | *Optional* |
-| `DEFAULT_VOICE_EN` | Default English narrator voice | `en-US-BrianNeural` |
-| `DEFAULT_VOICE_PL` | Default Polish narrator voice | `pl-PL-MarekNeural` |
-| `APPLY_FILM_GRAIN` | Adds subtle film grain to bypass frame hash duplication | `true` |
-| `SPOOF_DEVICE_METADATA` | Injects Apple iPhone 15 Pro EXIF metadata | `true` |
-| `DECLARE_AI_CONTENT` | Discloses AI-generated content toggle in TikTok Studio | `false` |
-
----
-
-## 📄 License
-This project is open-source and available under the [MIT License](LICENSE).
+## 📄 Licencja
+Projekt udostępniony na licencji [MIT](LICENSE). Możesz go dowolnie modyfikować i używać komercyjnie.
