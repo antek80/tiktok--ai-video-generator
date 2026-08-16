@@ -62,7 +62,7 @@ class Pipeline:
     ) -> VideoGenerationResult:
         """
         Full end-to-end automated pipeline to produce a high-retention anti-shadowban TikTok video.
-        Layers: 60fps Gameplay Background + Contextual Real Photo Cards + Hormozi Karaoke Subtitles.
+        Layers: 60fps Gameplay + Authentic Photo Cards + TikTok Like Heart Outro + Hormozi Subtitles.
         """
         job_id = f"video_{uuid.uuid4().hex[:8]}"
         project_dir = TEMP_DIR / job_id
@@ -116,9 +116,7 @@ class Pipeline:
             seg_duration = max(1.0, total_duration - current_time) if i == num_scenes - 1 else base_scene_duration
             card_path = cards_dir / f"card_{scene.scene_id}.png"
             
-            # Extract key entity from narration or visual prompt
             entity_query = scene.visual_prompt.replace("Cinematic vertical shot", "").replace("9:16", "").strip()
-            # Try specific topic first if in scene 1 or 2
             if i == 0:
                 entity_query = topic
                 
@@ -133,7 +131,6 @@ class Pipeline:
             card_entries.append((used_img, seg_duration))
             current_time += seg_duration
 
-        # Concat list for cards overlay
         cards_concat_path = cards_dir / "cards_concat.txt"
         with open(cards_concat_path, "w", encoding="utf-8") as f:
             for c_path, c_dur in card_entries:
@@ -142,16 +139,26 @@ class Pipeline:
             if card_entries:
                 f.write(f"file '{card_entries[-1][0].resolve()}'\n")
 
-        # 5. Generate BGM and SFX
-        logger.info("Step 5: Synthesizing background ambience and SFX...")
+        # 5. Generate TikTok Double-Tap Like Outro Heart Animation
+        logger.info("Step 5: Generating TikTok Like Heart Outro animation...")
+        outro_dir = project_dir / "outro"
+        outro_concat_path = self.asset_manager.create_like_outro_overlay(
+            output_dir=outro_dir,
+            total_duration=total_duration,
+            video_width=settings.video_width,
+            video_height=settings.video_height
+        )
+
+        # 6. Generate BGM and SFX
+        logger.info("Step 6: Synthesizing background ambience and SFX...")
         bgm_path = project_dir / "bgm.aac"
         self.asset_manager.create_ambient_bgm(bgm_path, duration=total_duration + 1.0)
         
         whoosh_path = project_dir / "whoosh.aac"
         self.asset_manager.create_whoosh_sfx(whoosh_path)
 
-        # 6. Final Video Assembly with Multi-layer FFmpeg Composition
-        logger.info("Step 6: Assembling final anti-shadowban video with FFmpeg...")
+        # 7. Final Video Assembly with Multi-layer FFmpeg Composition
+        logger.info("Step 7: Assembling final video with Heart Outro & FFmpeg...")
         final_video_path = OUTPUT_DIR / f"{job_id}.mp4"
         self.video_engine.assemble_final_video(
             segment_paths=[],
@@ -160,6 +167,7 @@ class Pipeline:
             bgm_audio_path=bgm_path,
             output_video_path=final_video_path,
             cards_concat_path=cards_concat_path,
+            outro_concat_path=outro_concat_path,
             whoosh_sfx_path=whoosh_path,
             duration=total_duration
         )

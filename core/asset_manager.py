@@ -151,6 +151,105 @@ class AssetManager:
         logger.info(f"Created floating entity card overlay for '{query}': {output_path}")
         return output_path
 
+    def draw_tiktok_heart(self, size: int = 280) -> Image.Image:
+        """Draws the signature TikTok #FE2C55 heart with glossy highlight."""
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        color = (254, 44, 85, 255) # Official TikTok red
+        
+        import math
+        points = []
+        for t in range(0, 360, 2):
+            rad = math.radians(t)
+            x = 16 * (math.sin(rad) ** 3)
+            y = -(13 * math.cos(rad) - 5 * math.cos(2 * rad) - 2 * math.cos(3 * rad) - math.cos(4 * rad))
+            scale = size / 38.0
+            cx = size / 2.0 + x * scale
+            cy = size / 2.0 + y * scale + (size * 0.04)
+            points.append((cx, cy))
+            
+        draw.polygon(points, fill=color)
+        draw.ellipse([size * 0.24, size * 0.22, size * 0.42, size * 0.38], fill=(255, 255, 255, 110))
+        return img
+
+    def create_like_outro_overlay(
+        self,
+        output_dir: Path,
+        total_duration: float,
+        video_width: int = 1080,
+        video_height: int = 1920
+    ) -> Path:
+        """
+        Generates a 2-second animated double-tap TikTok heart pop-in at the end of the video.
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+        outro_len = 2.0
+        fps = 15
+        total_frames = int(outro_len * fps)
+
+        blank_png = output_dir / "outro_blank.png"
+        Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0)).save(blank_png)
+
+        base_heart = self.draw_tiktok_heart(size=280)
+        frames = []
+
+        import math
+        for f in range(total_frames):
+            progress = f / float(total_frames)
+            canvas = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
+            
+            # Pop-in scaling with overshoot
+            if progress < 0.25:
+                # 0.0 -> 1.35
+                p = progress / 0.25
+                scale = 0.1 + (1.25 * math.sin(p * math.pi / 2))
+                alpha = int(255 * p)
+            elif progress < 0.45:
+                # 1.35 -> 1.0 bounce back
+                p = (progress - 0.25) / 0.2
+                scale = 1.35 - (0.35 * p)
+                alpha = 255
+            else:
+                # Gentle floating pulse
+                p = (progress - 0.45) / 0.55
+                scale = 1.0 + (0.06 * math.sin(p * 4 * math.pi))
+                alpha = 255
+
+            w = max(10, int(280 * scale))
+            h = max(10, int(280 * scale))
+            scaled_heart = base_heart.resize((w, h), Image.Resampling.LANCZOS)
+            
+            hx = (video_width - w) // 2
+            hy = (video_height // 2) - 160  # Positioned right above center subtitles
+
+            # Shadow / glow
+            shadow = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
+            s_draw = ImageDraw.Draw(shadow)
+            s_draw.ellipse([hx - 20, hy - 20, hx + w + 20, hy + h + 20], fill=(254, 44, 85, int(70 * (alpha / 255.0))))
+            shadow = shadow.filter(ImageFilter.GaussianBlur(25))
+            canvas = Image.alpha_composite(canvas, shadow)
+
+            # Paste heart
+            canvas.paste(scaled_heart, (hx, hy), scaled_heart)
+
+            frame_path = output_dir / f"heart_{f:02d}.png"
+            canvas.save(frame_path, "PNG")
+            frames.append((frame_path, 1.0 / fps))
+
+        # Build outro concat file
+        concat_path = output_dir / "outro_concat.txt"
+        with open(concat_path, "w", encoding="utf-8") as f:
+            lead_in_dur = max(0.1, total_duration - outro_len)
+            f.write(f"file '{blank_png.resolve()}'\n")
+            f.write(f"duration {lead_in_dur:.4f}\n")
+            for f_path, f_dur in frames:
+                f.write(f"file '{f_path.resolve()}'\n")
+                f.write(f"duration {f_dur:.4f}\n")
+            if frames:
+                f.write(f"file '{frames[-1][0].resolve()}'\n")
+
+        return concat_path
+
     def create_ambient_bgm(self, output_path: Path, duration: float = 30.0) -> Path:
         """Synthesizes high quality subtle cinematic drone audio."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
