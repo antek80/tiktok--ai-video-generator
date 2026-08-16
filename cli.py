@@ -126,10 +126,18 @@ def auto(
         declare_ai=declare_ai
     ))
     
+@app.command()
+def daily():
+    """
+    Uruchamia codzienną procedurę: dobiera unikalny temat, generuje wideo i publikuje na TikTok.
+    """
+    from daily_poster import run_daily_job
+    console.print(Panel.fit("[bold green]🤖 Uruchamianie procedury Daily Autonomous Agent...[/bold green]"))
+    success = asyncio.run(run_daily_job())
     if success:
-        console.print("[bold green]🏆 Gotowe! Wideo wygenerowane i opublikowane na TikToku bez ryzyka shadowbanu.[/bold green]")
+        console.print("[bold green]🏆 Codzienna publikacja zakończona sukcesem![/bold green]")
     else:
-        console.print("[bold red]⚠️ Wygenerowano wideo, ale wystąpił problem z publikacją na TikToku.[/bold red]")
+        console.print("[bold red]❌ Błąd podczas codziennej publikacji (sprawdź logs/daily_poster.log).[/bold red]")
 
 if __name__ == "__main__":
     app()
