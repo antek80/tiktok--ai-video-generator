@@ -93,8 +93,12 @@ async def run_daily_job():
     sm = SessionManager()
     is_logged = await sm.is_logged_in()
     if not is_logged:
-        logger.error("❌ Sesja TikTok nie jest zalogowana! Uruchom najpierw `python cli.py login` na komputerze.")
-        return False
+        logger.warning("Brak aktywnej sesji TikTok. Otwieram okno logowania...")
+        await sm.login_interactively()
+        is_logged = await sm.is_logged_in()
+        if not is_logged:
+            logger.error("❌ Logowanie nie powiodło się lub zostało przerwane.")
+            return False
 
     # 2. Pobierz unikalny temat
     topic = get_next_topic()

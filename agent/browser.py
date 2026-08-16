@@ -38,6 +38,7 @@ class BrowserManager:
 
         self._context = await self._playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.session_dir),
+            channel="chrome",
             headless=self.headless,
             user_agent=USER_AGENT,
             viewport={"width": 1280, "height": 800},
