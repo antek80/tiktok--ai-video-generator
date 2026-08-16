@@ -19,6 +19,35 @@ class TikTokUploader:
         if settings.simulate_human_delays:
             await asyncio.sleep(random.uniform(min_s, max_s))
 
+    async def _dismiss_modals(self, page: Page):
+        """Dismisses any floating dialogs, tooltips, or tutorial popups."""
+        try:
+            # Try pressing Escape first
+            await page.keyboard.press("Escape")
+        except Exception:
+            pass
+
+        modal_button_selectors = [
+            'button:has-text("Rozumiem")',
+            'button:has-text("Got it")',
+            'button:has-text("OK")',
+            'button:has-text("Ok")',
+            'button:has-text("Zamknij")',
+            'button:has-text("Close")',
+            '.TUXModal button',
+            'div[data-e2e="modal-close-button"]',
+            'button[aria-label="Close"]',
+            'button[aria-label="Zamknij"]'
+        ]
+        for sel in modal_button_selectors:
+            try:
+                btn = await page.query_selector(sel)
+                if btn and await btn.is_visible():
+                    await btn.click(force=True)
+                    await asyncio.sleep(0.5)
+            except Exception:
+                continue
+
     async def upload_video(
         self,
         video_path: Path,
@@ -77,6 +106,9 @@ class TikTokUploader:
             if hashtags:
                 full_text += " " + " ".join(hashtags)
 
+            # Dismiss any popups or tutorial modals (e.g. copyright check modal, cookies)
+            await self._dismiss_modals(page)
+
             # Set Caption
             logger.info("Entering caption and hashtags...")
             editor_selectors = [
@@ -94,7 +126,12 @@ class TikTokUploader:
                     break
 
             if caption_input:
-                await caption_input.click()
+                await self._dismiss_modals(page)
+                try:
+                    await caption_input.click(force=True, timeout=5000)
+                except Exception:
+                    await caption_input.focus()
+
                 await self._human_delay(0.5, 1.2)
                 # Clear existing text
                 await page.keyboard.press("Meta+A")

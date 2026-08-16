@@ -132,5 +132,16 @@ class VoiceEngine:
         return total_duration, word_timestamps
 
     def generate_sync(self, text: str, output_audio_path: Path, voice: str = None) -> Tuple[float, List[WordTimestamp]]:
-        """Synchronous wrapper for generating speech."""
-        return asyncio.run(self.generate_speech_with_timestamps(text, output_audio_path, voice))
+        """Synchronous wrapper for generating speech that safely handles existing event loops."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(lambda: asyncio.run(self.generate_speech_with_timestamps(text, output_audio_path, voice)))
+                return future.result()
+        else:
+            return asyncio.run(self.generate_speech_with_timestamps(text, output_audio_path, voice))

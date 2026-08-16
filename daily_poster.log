@@ -1,0 +1,91 @@
+2026-08-16 13:52:28,381 [INFO] === 🤖 Uruchamianie dziennego Agenta TikTok ===
+2026-08-16 13:52:36,994 [INFO] Wybrany temat na dziś: 'Tajemnica zniknięcia załogi statku Mary Celeste'
+2026-08-16 13:52:36,999 [INFO] === Starting Video Generation Pipeline for Topic: 'Tajemnica zniknięcia załogi statku Mary Celeste' [video_58f6bc21] ===
+2026-08-16 13:52:36,999 [INFO] Step 1: Generating high-retention viral script...
+2026-08-16 13:52:37,000 [INFO] Step 2: Generating natural TTS voiceover with word-level timestamps...
+2026-08-16 13:52:46,339 [INFO] Generated TTS audio: /Users/antoniborawski/repos/tiktok--ai-video-generator/temp/video_58f6bc21/voice.mp3 (Duration: 23.21s, Words: 51)
+2026-08-16 13:52:46,340 [INFO] Step 3: Creating dynamic word-by-word karaoke subtitles...
+2026-08-16 13:52:46,760 [INFO] Generated 52 dynamic subtitle frames in: /Users/antoniborawski/repos/tiktok--ai-video-generator/temp/video_58f6bc21/subtitles/subtitles_concat.txt
+2026-08-16 13:52:46,760 [INFO] Step 4: Generating visual assets for 5 scenes...
+2026-08-16 13:52:46,777 [INFO] Created fallback visual for scene 1: /Users/antoniborawski/repos/tiktok--ai-video-generator/temp/video_58f6bc21/scene_1.jpg
+2026-08-16 13:52:48,104 [INFO] Created fallback visual for scene 2: /Users/antoniborawski/repos/tiktok--ai-video-generator/temp/video_58f6bc21/scene_2.jpg
+2026-08-16 13:52:49,592 [INFO] Created fallback visual for scene 3: /Users/antoniborawski/repos/tiktok--ai-video-generator/temp/video_58f6bc21/scene_3.jpg
+2026-08-16 13:52:51,350 [INFO] Created fallback visual for scene 4: /Users/antoniborawski/repos/tiktok--ai-video-generator/temp/video_58f6bc21/scene_4.jpg
+2026-08-16 13:52:52,541 [INFO] Created fallback visual for scene 5: /Users/antoniborawski/repos/tiktok--ai-video-generator/temp/video_58f6bc21/scene_5.jpg
+2026-08-16 13:52:54,095 [INFO] Step 5: Synthesizing background ambience and SFX...
+2026-08-16 13:52:54,764 [INFO] Step 6: Assembling final anti-shadowban video with FFmpeg...
+2026-08-16 13:52:54,766 [INFO] Rendering final anti-shadowban video to: /Users/antoniborawski/repos/tiktok--ai-video-generator/output/video_58f6bc21.mp4
+2026-08-16 13:53:14,651 [INFO] === Video Generated Successfully: /Users/antoniborawski/repos/tiktok--ai-video-generator/output/video_58f6bc21.mp4 ===
+2026-08-16 13:53:14,652 [INFO] Wideo wygenerowane pomyślnie: /Users/antoniborawski/repos/tiktok--ai-video-generator/output/video_58f6bc21.mp4 (czas: 23.21s)
+2026-08-16 13:53:16,637 [INFO] Navigating to TikTok Creator Center Upload page...
+2026-08-16 13:53:20,727 [INFO] Selecting video file: video_58f6bc21.mp4
+2026-08-16 13:53:40,778 [INFO] File uploaded to input. Waiting for video processing...
+2026-08-16 13:53:47,357 [INFO] Entering caption and hashtags...
+2026-08-16 13:54:17,380 [ERROR] Error during TikTok upload: ElementHandle.click: Timeout 30000ms exceeded.
+Call log:
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <span class="TUXText TUXText--tiktok-sans">Automatycznie sprawdzimy Twój film pod kątem praw…</span> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
+    - <span class="TUXText TUXText--tiktok-sans">Automatycznie sprawdzimy Twój film pod kątem praw…</span> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+  2 × retrying click action
+      - waiting 100ms
+      - waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div dir="ltr" class="TUXModal-overlay" data-transition-status="open" data-tux-color-scheme="light">…</div> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+  13 × retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <span class="TUXText TUXText--tiktok-sans">Automatycznie sprawdzimy Twój film pod kątem praw…</span> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <span class="TUXText TUXText--tiktok-sans">Automatycznie sprawdzimy Twój film pod kątem praw…</span> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div dir="ltr" class="TUXModal-overlay" data-transition-status="open" data-tux-color-scheme="light">…</div> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div dir="ltr" class="TUXModal-overlay" data-transition-status="open" data-tux-color-scheme="light">…</div> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+  2 × retrying click action
+      - waiting 500ms
+      - waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <span class="TUXText TUXText--tiktok-sans">Automatycznie sprawdzimy Twój film pod kątem praw…</span> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+  - retrying click action
+    - waiting 500ms
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
+    - <div dir="ltr" class="TUXModal-overlay" data-transition-status="open" data-tux-color-scheme="light">…</div> from <div id=":r6k:" data-floating-ui-portal="">…</div> subtree intercepts pointer events
+  - retrying click action
+    - waiting 500ms
+
+2026-08-16 13:54:17,860 [ERROR] ⚠️ Nie udało się opublikować wideo dla tematu 'Tajemnica zniknięcia załogi statku Mary Celeste'.
