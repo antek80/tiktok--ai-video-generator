@@ -248,30 +248,39 @@ class AssetManager:
             # 4. Composite Clean Heart
             canvas.paste(scaled_heart, (hx, hy), scaled_heart)
 
-            # 5. Render Animated CTA Text on the final canvas
+            # 5. Render Animated CTA Text on the final canvas (No missing glyph boxes!)
             final_draw = ImageDraw.Draw(canvas)
             try:
                 font_path = "/System/Library/Fonts/Supplemental/Impact.ttf"
-                cta_font = ImageFont.truetype(font_path, 48) if Path(font_path).exists() else ImageFont.load_default()
+                cta_font = ImageFont.truetype(font_path, 50) if Path(font_path).exists() else ImageFont.load_default()
             except Exception:
                 cta_font = ImageFont.load_default()
 
             text_line1 = "PLEASE LIKE THE VIDEO"
-            text_line2 = "TO SUPPORT MY WORK ❤️"
+            text_line2 = "TO SUPPORT MY WORK"
             
             w1 = final_draw.textlength(text_line1, font=cta_font)
             w2 = final_draw.textlength(text_line2, font=cta_font)
+            
+            # Mini vector heart next to the yellow text line
+            mini_heart_size = 46
+            mini_heart = self.draw_tiktok_heart(size=mini_heart_size)
+            
+            total_w2 = w2 + mini_heart_size + 12
             tx1 = (video_width - w1) // 2
-            tx2 = (video_width - w2) // 2
-            ty = 970
+            tx2 = int((video_width - total_w2) // 2)
+            ty = 960
 
             # Shadow for CTA
             final_draw.text((tx1 + 4, ty + 4), text_line1, font=cta_font, fill=(0, 0, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=8)
-            final_draw.text((tx2 + 4, ty + 60 + 4), text_line2, font=cta_font, fill=(0, 0, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=8)
+            final_draw.text((tx2 + 4, ty + 64 + 4), text_line2, font=cta_font, fill=(0, 0, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=8)
 
             # Main CTA Text
             final_draw.text((tx1, ty), text_line1, font=cta_font, fill=(255, 255, 255, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=8)
-            final_draw.text((tx2, ty + 60), text_line2, font=cta_font, fill=(255, 230, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=8)
+            final_draw.text((tx2, ty + 64), text_line2, font=cta_font, fill=(255, 230, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=8)
+
+            # Paste clean mini vector heart next to line 2
+            canvas.paste(mini_heart, (int(tx2 + w2 + 12), int(ty + 66)), mini_heart)
 
             frame_path = output_dir / f"heart_{f:02d}.png"
             canvas.save(frame_path, "PNG")
