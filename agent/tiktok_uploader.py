@@ -80,14 +80,16 @@ class TikTokUploader:
                 await nie_teraz.click()
                 await self._human_delay(0.5, 1.0)
 
-            # Locate file input
+            # Locate file input (attached in DOM, even if visually hidden)
             logger.info(f"Selecting video file: {video_path.name}")
-            file_input = await page.wait_for_selector('input[type="file"]', timeout=20000)
-            if not file_input:
-                logger.error("Could not find file upload input on TikTok upload page.")
-                return False
-
-            await file_input.set_input_files(str(video_path.resolve()))
+            try:
+                await page.set_input_files('input[type="file"]', str(video_path.resolve()), timeout=20000)
+            except Exception:
+                file_input = await page.wait_for_selector('input[type="file"]', state="attached", timeout=20000)
+                if not file_input:
+                    logger.error("Could not find file upload input on TikTok upload page.")
+                    return False
+                await file_input.set_input_files(str(video_path.resolve()))
             logger.info("File uploaded to input. Waiting for video processing to complete...")
 
             # Wait until post button is enabled (indicates upload and processing is 100% ready)
