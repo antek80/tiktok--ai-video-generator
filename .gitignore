@@ -6,6 +6,7 @@ output/
 .env
 .DS_Store
 
+# Ignore large downloaded raw files, but keep GitHub starter video pack
 assets/backgrounds/*.mp4
+!assets/backgrounds/gh_starter_*.mp4
 assets/backgrounds/*.webm
-
