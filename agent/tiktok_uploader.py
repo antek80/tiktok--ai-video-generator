@@ -24,7 +24,8 @@ class TikTokUploader:
         video_path: Path,
         caption: str,
         hashtags: Optional[List[str]] = None,
-        publish_now: bool = True
+        publish_now: bool = True,
+        declare_ai: Optional[bool] = None
     ) -> bool:
         """
         Uploads and publishes a video to TikTok Creator Center with anti-detection steps
@@ -107,8 +108,9 @@ class TikTokUploader:
 
             await self._human_delay(2.0, 3.5)
 
-            # Toggle "AI-generated content" (AIGC) declaration (Crucial for Anti-Shadowban!)
-            if settings.declare_ai_content:
+            # Toggle "AI-generated content" (AIGC) declaration (opcjonalnie)
+            should_declare_ai = declare_ai if declare_ai is not None else settings.declare_ai_content
+            if should_declare_ai:
                 logger.info("Disclosing AI-generated content toggle...")
                 try:
                     ai_switch_selectors = [

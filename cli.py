@@ -73,7 +73,8 @@ def upload(
     video: Path = typer.Option(..., "--video", "-v", help="Ścieżka do pliku .mp4"),
     caption: Optional[str] = typer.Option(None, "--caption", "-c", help="Opis wideo"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Hashtagi oddzielone spacją (np. '#fyp #viral')"),
-    publish: bool = typer.Option(True, "--publish/--draft", help="Opublikuj natychmiast lub zapisz wersję roboczą")
+    publish: bool = typer.Option(True, "--publish/--draft", help="Opublikuj natychmiast lub zapisz wersję roboczą"),
+    declare_ai: bool = typer.Option(False, "--declare-ai/--no-declare-ai", help="Oznacz film oficjalną etykietą AI na TikToku")
 ):
     """
     Autonomicznie publikuje wideo na TikToku za pomocą Playwright Stealth.
@@ -88,7 +89,8 @@ def upload(
         video_path=video,
         caption=cap,
         hashtags=hashtags_list,
-        publish_now=publish
+        publish_now=publish,
+        declare_ai=declare_ai
     ))
     
     if success:
@@ -100,7 +102,8 @@ def upload(
 def auto(
     topic: str = typer.Option(..., "--topic", "-t", help="Temat wideo"),
     lang: str = typer.Option("pl", "--lang", "-l", help="Język lektora"),
-    publish: bool = typer.Option(True, "--publish/--draft", help="Automatycznie opublikuj po wyrenderowaniu")
+    publish: bool = typer.Option(True, "--publish/--draft", help="Automatycznie opublikuj po wyrenderowaniu"),
+    declare_ai: bool = typer.Option(False, "--declare-ai/--no-declare-ai", help="Oznacz film oficjalną etykietą AI na TikToku")
 ):
     """
     Pełny automat: Generuje wideo od zera i natychmiast publikuje je na TikToku.
@@ -119,7 +122,8 @@ def auto(
         video_path=result.video_path,
         caption=result.caption,
         hashtags=result.hashtags,
-        publish_now=publish
+        publish_now=publish,
+        declare_ai=declare_ai
     ))
     
     if success:
