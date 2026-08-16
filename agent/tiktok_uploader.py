@@ -170,33 +170,45 @@ class TikTokUploader:
 
             # Click Publish / Post button if requested
             if publish_now:
-                logger.info("Clicking exact Post / Publish button...")
-                post_button_selectors = [
-                    'button[data-e2e="post_video_button"]',
-                    'button.TUXButton--primary:has-text("Opublikuj")',
-                    'button.TUXButton--primary:has-text("Post")',
-                    'button:has-text("Opublikuj")',
-                    'button:has-text("Post")'
-                ]
+                logger.info("Waiting for TikTok Studio to finish transcoding and enable Post button (monitoring aria-disabled)...")
+                
+                post_ready = False
+                for attempt in range(40):
+                    await asyncio.sleep(3)
+                    btn = await page.query_selector('button[data-e2e="post_video_button"]')
+                    if btn:
+                        is_disabled = await btn.get_attribute("disabled")
+                        is_aria_disabled = await btn.get_attribute("aria-disabled")
+                        if is_disabled is None and is_aria_disabled != "true":
+                            logger.info(f"Post button is fully enabled and ready after {(attempt + 1) * 3}s!")
+                            post_ready = True
+                            break
+                    else:
+                        logger.debug("Waiting for post button...")
 
-                posted = False
-                for btn_sel in post_button_selectors:
-                    btn = await page.query_selector(btn_sel)
-                    if btn and await btn.is_enabled():
-                        await btn.click(force=True)
-                        logger.info(f"Clicked Post button via selector '{btn_sel}'!")
-                        posted = True
-                        break
+                if not post_ready:
+                    logger.warning("Timed out waiting for aria-disabled=false, attempting direct click...")
 
-                if not posted:
-                    logger.error("Could not find enabled Post button.")
-                    return False
+                logger.info("Clicking confirmed Post / Publish button...")
+                await page.click('button[data-e2e="post_video_button"]', timeout=20000)
 
                 logger.info("Waiting for TikTok Studio to process and confirm publication...")
-                for _ in range(15):
-                    await asyncio.sleep(1.5)
-                    if "content" in page.url:
-                        logger.info("Redirected to content list! Publication confirmed.")
+                confirmed = False
+                for _ in range(30):
+                    await asyncio.sleep(1)
+                    # Check for modal success button
+                    manage_btn = await page.query_selector('button:has-text("Zarządzaj swoimi postami"), button:has-text("Manage your posts")')
+                    if manage_btn and await manage_btn.is_visible():
+                        logger.info("Clicked Manage Posts modal button! Post successfully registered.")
+                        await manage_btn.click()
+                        confirmed = True
+                        await asyncio.sleep(3)
+                        break
+
+                    txt = await page.inner_text("body")
+                    if "Twoje wideo zostało przesłane" in txt or "Wideo zostało przesłane" in txt or "Your video has been uploaded" in txt or "content" in page.url:
+                        logger.info("Upload confirmed by TikTok Studio success state!")
+                        confirmed = True
                         break
 
                 logger.info("TikTok upload sequence finished successfully!")
