@@ -65,8 +65,8 @@ class TikTokUploader:
 
         context, page = await self.browser_manager.get_stealth_context()
         try:
-            logger.info("Navigating to TikTok Creator Center Upload page...")
-            await page.goto("https://www.tiktok.com/creator-center/upload", wait_until="domcontentloaded")
+            logger.info("Navigating to TikTok Studio Upload page...")
+            await page.goto("https://www.tiktok.com/tiktokstudio/upload", wait_until="domcontentloaded")
             await self._human_delay(2.0, 4.0)
 
             # Check if login is required
@@ -74,40 +74,33 @@ class TikTokUploader:
                 logger.error("User is not logged in. Please run `python cli.py login` first.")
                 return False
 
-            # Locate file input (may be inside an iframe or directly in page)
+            # Dismiss discard modal if any
+            nie_teraz = await page.query_selector('button:has-text("Nie teraz")')
+            if nie_teraz and await nie_teraz.is_visible():
+                await nie_teraz.click()
+                await self._human_delay(0.5, 1.0)
+
+            # Locate file input
             logger.info(f"Selecting video file: {video_path.name}")
-            
-            file_input = None
-            try:
-                file_input = await page.wait_for_selector('input[type="file"]', timeout=20000)
-            except Exception:
-                pass
-
-            if not file_input:
-                for frame in page.frames:
-                    try:
-                        file_input = await frame.query_selector('input[type="file"]')
-                        if file_input:
-                            break
-                    except Exception:
-                        continue
-
+            file_input = await page.wait_for_selector('input[type="file"]', timeout=20000)
             if not file_input:
                 logger.error("Could not find file upload input on TikTok upload page.")
                 return False
 
             await file_input.set_input_files(str(video_path.resolve()))
-            logger.info("File uploaded to input. Waiting for video processing...")
+            logger.info("File uploaded to input. Waiting for video processing to complete...")
 
-            await self._human_delay(4.0, 7.0)
+            # Wait until post button is enabled (indicates upload and processing is 100% ready)
+            try:
+                await page.wait_for_selector('button[data-e2e="post_video_button"]:not([disabled])', timeout=60000)
+                logger.info("Video upload & processing confirmed ready by TikTok Studio.")
+            except Exception:
+                logger.warning("Timed out waiting for post_video_button enabled state, proceeding...")
 
             # Construct full description with hashtags
             full_text = caption
             if hashtags:
                 full_text += " " + " ".join(hashtags)
-
-            # Dismiss any popups or tutorial modals (e.g. copyright check modal, cookies)
-            await self._dismiss_modals(page)
 
             # Set Caption
             logger.info("Entering caption and hashtags...")
@@ -126,7 +119,6 @@ class TikTokUploader:
                     break
 
             if caption_input:
-                await self._dismiss_modals(page)
                 try:
                     await caption_input.click(force=True, timeout=5000)
                 except Exception:
@@ -139,11 +131,11 @@ class TikTokUploader:
                 await self._human_delay(0.3, 0.6)
                 # Type caption with human typing speed
                 for char in full_text:
-                    await page.keyboard.type(char, delay=random.randint(25, 75))
+                    await page.keyboard.type(char, delay=random.randint(15, 45))
             else:
                 logger.warning("Could not find rich caption editor; trying alternative input methods.")
 
-            await self._human_delay(2.0, 3.5)
+            await self._human_delay(1.5, 3.0)
 
             # Toggle "AI-generated content" (AIGC) declaration (opcjonalnie)
             should_declare_ai = declare_ai if declare_ai is not None else settings.declare_ai_content
@@ -172,32 +164,39 @@ class TikTokUploader:
                 except Exception as e:
                     logger.warning(f"Could not automatically toggle AI switch: {e}")
 
-            await self._human_delay(2.0, 4.0)
+            await self._human_delay(1.5, 2.5)
 
             # Click Publish / Post button if requested
             if publish_now:
-                logger.info("Clicking Post / Publish button...")
+                logger.info("Clicking exact Post / Publish button...")
                 post_button_selectors = [
-                    'button:has-text("Post")',
+                    'button[data-e2e="post_video_button"]',
+                    'button.TUXButton--primary:has-text("Opublikuj")',
+                    'button.TUXButton--primary:has-text("Post")',
                     'button:has-text("Opublikuj")',
-                    'div[data-e2e="post-video-button"]',
-                    'button[type="button"]:has-text("Post")',
-                    'button[type="button"]:has-text("Opublikuj")'
+                    'button:has-text("Post")'
                 ]
 
                 posted = False
                 for btn_sel in post_button_selectors:
                     btn = await page.query_selector(btn_sel)
                     if btn and await btn.is_enabled():
-                        await btn.click()
-                        logger.info("Clicked Post button!")
+                        await btn.click(force=True)
+                        logger.info(f"Clicked Post button via selector '{btn_sel}'!")
                         posted = True
                         break
 
                 if not posted:
-                    logger.warning("Could not auto-click post button. Saving as draft or waiting.")
+                    logger.error("Could not find enabled Post button.")
+                    return False
 
-                await self._human_delay(5.0, 8.0)
+                logger.info("Waiting for TikTok Studio to process and confirm publication...")
+                for _ in range(15):
+                    await asyncio.sleep(1.5)
+                    if "content" in page.url:
+                        logger.info("Redirected to content list! Publication confirmed.")
+                        break
+
                 logger.info("TikTok upload sequence finished successfully!")
                 return True
             else:
