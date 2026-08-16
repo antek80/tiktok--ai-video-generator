@@ -72,10 +72,14 @@ def status():
 @app.command("open")
 def open_tiktok():
     """
-    Opens Google Chrome to TikTok Creator Center Content dashboard.
+    Opens Google Chrome with the exact bot session to view Creator Center.
     """
-    console.print("[bold cyan]Opening TikTok Creator Center in Google Chrome...[/bold cyan]")
-    subprocess.Popen(["open", "-a", "Google Chrome", "https://www.tiktok.com/creator-center/content"])
+    console.print("[bold cyan]Opening TikTok Creator Center with bot session in Google Chrome...[/bold cyan]")
+    subprocess.Popen([
+        "open", "-na", "Google Chrome",
+        "--args", f"--user-data-dir={settings.tiktok_session_dir}",
+        "https://www.tiktok.com/creator-center/content"
+    ])
 
 @app.command()
 def upload(
