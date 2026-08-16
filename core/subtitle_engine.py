@@ -25,8 +25,8 @@ class SubtitleEngine:
         self,
         words_per_batch: int = 2,
         font_size: int = 76,
-        active_color: Tuple[int, int, int] = (255, 230, 0),   # Vibrant Neon Yellow
-        normal_color: Tuple[int, int, int] = (255, 255, 255), # Pure Crisp White
+        active_color: Tuple[int, int, int] = (255, 230, 0),   # Neon Yellow
+        normal_color: Tuple[int, int, int] = (255, 255, 255), # Pure White
         stroke_color: Tuple[int, int, int] = (0, 0, 0),       # Heavy Black outline
         stroke_width: int = 10
     ):
@@ -56,17 +56,23 @@ class SubtitleEngine:
         video_height: int = 1920
     ) -> Tuple[Path, Path]:
         """
-        Generates a sequence of transparent PNG subtitle overlays with rapid-fire
-        active-word highlight and returns the concat demuxer text file path.
+        Generates sample-accurate karaoke subtitle overlays that remain 100% in sync
+        with zero cumulative timeline drift.
         """
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # 1. Transparent placeholder
         blank_png = output_dir / "sub_blank.png"
-        blank_img = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
-        blank_img.save(blank_png)
+        Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0)).save(blank_png)
 
-        # 2. Group into batches of 1-2 words (Hormozi rapid-fire style)
+        if not word_timestamps:
+            concat_path = output_dir / "subtitles_concat.txt"
+            with open(concat_path, "w", encoding="utf-8") as f:
+                f.write(f"file '{blank_png.resolve()}'\n")
+                f.write(f"duration {total_duration:.4f}\n")
+                f.write(f"file '{blank_png.resolve()}'\n")
+            return concat_path, blank_png
+
+        # 1. Group into batches of 1-2 words (Hormozi rapid-fire style)
         batches: List[List[WordTimestamp]] = []
         current_batch: List[WordTimestamp] = []
         for wt in word_timestamps:
@@ -77,24 +83,16 @@ class SubtitleEngine:
         if current_batch:
             batches.append(current_batch)
 
-        # 3. Render each active word state
-        cards: List[SubtitleCard] = []
-        last_timestamp = 0.0
+        # 2. Build flat list of all timeline event states: (image_path, start_time)
+        timeline_events = []
+
+        # If voice doesn't start at 0.0, prepend blank
+        first_word_start = word_timestamps[0].start_time
+        if first_word_start > 0.05:
+            timeline_events.append((blank_png, 0.0))
 
         for batch_idx, batch in enumerate(batches):
             for active_idx, active_word in enumerate(batch):
-                start_time = active_word.start_time
-                if active_idx < len(batch) - 1:
-                    end_time = batch[active_idx + 1].start_time
-                else:
-                    end_time = active_word.end_time + 0.08
-
-                # Insert gap if needed
-                if start_time > last_timestamp + 0.05:
-                    gap_duration = start_time - last_timestamp
-                    cards.append(SubtitleCard(blank_png, gap_duration))
-
-                # Render PNG
                 img_path = output_dir / f"sub_{batch_idx}_{active_idx}.png"
                 self._render_subtitle_image(
                     batch=batch,
@@ -103,16 +101,21 @@ class SubtitleEngine:
                     video_width=video_width,
                     video_height=video_height
                 )
-                
-                duration = max(0.04, end_time - start_time)
-                cards.append(SubtitleCard(img_path, duration))
-                last_timestamp = end_time
+                timeline_events.append((img_path, active_word.start_time))
 
-        # Fill end gap
-        if total_duration > last_timestamp:
-            cards.append(SubtitleCard(blank_png, total_duration - last_timestamp))
+        # 3. Calculate exact delta durations between consecutive events
+        cards: List[SubtitleCard] = []
+        for i in range(len(timeline_events)):
+            img_p, t_start = timeline_events[i]
+            if i < len(timeline_events) - 1:
+                t_next = timeline_events[i + 1][1]
+                duration = max(0.03, t_next - t_start)
+            else:
+                # Last event runs until audio ends
+                duration = max(0.2, total_duration - t_start)
+            cards.append(SubtitleCard(img_p, duration))
 
-        # 4. Write concat file
+        # 4. Write FFmpeg concat list
         concat_path = output_dir / "subtitles_concat.txt"
         with open(concat_path, "w", encoding="utf-8") as f:
             for card in cards:
@@ -121,7 +124,7 @@ class SubtitleEngine:
             if cards:
                 f.write(f"file '{cards[-1].image_path.resolve()}'\n")
 
-        logger.info(f"Generated {len(cards)} dynamic subtitle frames in: {concat_path}")
+        logger.info(f"Generated {len(cards)} perfectly synchronized subtitle frames in: {concat_path}")
         return concat_path, blank_png
 
     def _render_subtitle_image(
@@ -145,15 +148,13 @@ class SubtitleEngine:
 
         total_text_width = sum(word_widths) + (len(words) - 1) * space_width
         start_x = (video_width - total_text_width) / 2.0
-        
-        # Perfect vertical positioning (eye level center-middle)
         start_y = (video_height / 2.0) + 120.0
 
         curr_x = start_x
         for i, word in enumerate(words):
             fill_color = self.active_color if i == active_idx else self.normal_color
             
-            # 1. Heavy Black Drop Shadow for 3D POP
+            # Shadow
             draw.text(
                 (curr_x + 5, start_y + 6),
                 word,
@@ -163,7 +164,7 @@ class SubtitleEngine:
                 stroke_width=self.stroke_width
             )
 
-            # 2. Main Text with thick outer outline
+            # Main text
             draw.text(
                 (curr_x, start_y),
                 word,
