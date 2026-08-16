@@ -203,7 +203,7 @@ class AssetManager:
             draw = ImageDraw.Draw(canvas)
 
             center_x = video_width // 2
-            center_y = (video_height // 2) - 140
+            center_y = 760
 
             # 1. Expanding Ripple Ring (Classic Double-Tap effect)
             if progress < 0.55:
@@ -231,8 +231,8 @@ class AssetManager:
                 scale = 1.0 + (0.05 * math.sin(p * 2 * math.pi))
                 alpha = 255
 
-            w = max(10, int(320 * scale))
-            h = max(10, int(320 * scale))
+            w = max(10, int(300 * scale))
+            h = max(10, int(300 * scale))
             scaled_heart = base_heart.resize((w, h), Image.Resampling.LANCZOS)
             
             hx = center_x - (w // 2)
@@ -263,7 +263,7 @@ class AssetManager:
             w2 = final_draw.textlength(text_line2, font=cta_font)
             tx1 = (video_width - w1) // 2
             tx2 = (video_width - w2) // 2
-            ty = center_y + (h // 2) + 30
+            ty = 970
 
             # Shadow for CTA
             final_draw.text((tx1 + 4, ty + 4), text_line1, font=cta_font, fill=(0, 0, 0, alpha), stroke_fill=(0, 0, 0, alpha), stroke_width=8)

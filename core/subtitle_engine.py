@@ -52,12 +52,13 @@ class SubtitleEngine:
         word_timestamps: List[WordTimestamp],
         output_dir: Path,
         total_duration: float,
+        outro_duration: float = 2.0,
         video_width: int = 1080,
         video_height: int = 1920
     ) -> Tuple[Path, Path]:
         """
         Generates sample-accurate karaoke subtitle overlays that remain 100% in sync
-        with zero cumulative timeline drift.
+        and automatically blanks out during the outro so subtitles NEVER overlap with the CTA heart.
         """
         output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -103,19 +104,33 @@ class SubtitleEngine:
                 )
                 timeline_events.append((img_path, active_word.start_time))
 
-        # 3. Calculate exact delta durations between consecutive events
+        # 3. Calculate exact delta durations, stopping before outro
         cards: List[SubtitleCard] = []
+        cutoff_time = max(0.0, total_duration - outro_duration)
+
         for i in range(len(timeline_events)):
             img_p, t_start = timeline_events[i]
+            if t_start >= cutoff_time:
+                continue
+
             if i < len(timeline_events) - 1:
                 t_next = timeline_events[i + 1][1]
-                duration = max(0.03, t_next - t_start)
+                if t_next >= cutoff_time:
+                    duration = max(0.03, cutoff_time - t_start)
+                    cards.append(SubtitleCard(img_p, duration))
+                    break
+                else:
+                    duration = max(0.03, t_next - t_start)
+                    cards.append(SubtitleCard(img_p, duration))
             else:
-                # Last event runs until audio ends
-                duration = max(0.2, total_duration - t_start)
-            cards.append(SubtitleCard(img_p, duration))
+                duration = max(0.1, cutoff_time - t_start)
+                cards.append(SubtitleCard(img_p, duration))
 
-        # 4. Write FFmpeg concat list
+        # 4. Fill the entire outro duration with transparent blank so NO text overlaps with CTA
+        if outro_duration > 0:
+            cards.append(SubtitleCard(blank_png, outro_duration))
+
+        # 5. Write FFmpeg concat list
         concat_path = output_dir / "subtitles_concat.txt"
         with open(concat_path, "w", encoding="utf-8") as f:
             for card in cards:
@@ -124,7 +139,7 @@ class SubtitleEngine:
             if cards:
                 f.write(f"file '{cards[-1].image_path.resolve()}'\n")
 
-        logger.info(f"Generated {len(cards)} perfectly synchronized subtitle frames in: {concat_path}")
+        logger.info(f"Generated {len(cards)} synchronized subtitle frames (outro clear enabled) in: {concat_path}")
         return concat_path, blank_png
 
     def _render_subtitle_image(
