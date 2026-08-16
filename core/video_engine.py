@@ -93,7 +93,24 @@ class VideoEngine:
         
         if gameplay_bg and gameplay_bg.exists():
             logger.info(f"Using viral gameplay background: {gameplay_bg.name}")
-            start_offset = random.randint(0, 100)
+            
+            # Probe background duration
+            bg_dur = 60.0
+            try:
+                probe_cmd = [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    str(gameplay_bg)
+                ]
+                pr = subprocess.run(probe_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                bg_dur = float(pr.stdout.decode().strip())
+            except Exception:
+                bg_dur = 60.0
+
+            needed_dur = duration or 35.0
+            max_offset = max(0.0, bg_dur - needed_dur - 2.0)
+            start_offset = random.uniform(0.0, max_offset) if max_offset > 0 else 0.0
             
             # Quad-layer Composition: [0] Background + [1] Cards + [2] Outro Heart + [3] Subtitles
             if settings.apply_film_grain:
@@ -111,7 +128,8 @@ class VideoEngine:
 
             cmd = [
                 "ffmpeg", "-y",
-                "-ss", str(start_offset),
+                "-ss", f"{start_offset:.2f}",
+                "-stream_loop", "-1",
                 "-i", str(gameplay_bg),
                 "-f", "concat",
                 "-safe", "0",
