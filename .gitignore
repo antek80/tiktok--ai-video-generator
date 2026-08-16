@@ -1,12 +1,14 @@
 .venv/
 __pycache__/
 *.pyc
+*.log
+*.part
 temp/
 output/
 .env
 .DS_Store
 
-# Ignore large downloaded raw files, but keep GitHub starter video pack
+# Ignore large downloaded extra files, keep curated starter video pack
 assets/backgrounds/*.mp4
 !assets/backgrounds/gh_starter_*.mp4
 assets/backgrounds/*.webm
