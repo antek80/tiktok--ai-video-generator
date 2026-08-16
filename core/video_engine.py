@@ -1,8 +1,9 @@
 import logging
+import random
 import subprocess
 from pathlib import Path
 from typing import List, Optional
-from config.settings import settings
+from config.settings import settings, ASSETS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,7 @@ class VideoEngine:
         animation: str,
         output_segment_path: Path
     ) -> Path:
-        """
-        Creates a dynamic video segment from a static image with smooth camera motion.
-        """
+        """Creates a dynamic video segment from a static image with smooth camera motion."""
         output_segment_path.parent.mkdir(parents=True, exist_ok=True)
         total_frames = max(30, int(duration * self.fps))
 
@@ -38,10 +37,8 @@ class VideoEngine:
             vf_anim = f"zoompan=z='if(lte(zoom,1.0),1.15,max(1.001,zoom-0.0015))':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={self.width}x{self.height}:fps={self.fps}"
         elif animation == "pan_left":
             vf_anim = f"zoompan=z=1.12:d={total_frames}:x='if(lte(on,1),iw/2-(iw/zoom/2),max(0,x-1.2))':y='ih/2-(ih/zoom/2)':s={self.width}x{self.height}:fps={self.fps}"
-        elif animation == "pan_right":
-            vf_anim = f"zoompan=z=1.12:d={total_frames}:x='if(lte(on,1),0,min(iw-iw/zoom,x+1.2))':y='ih/2-(ih/zoom/2)':s={self.width}x{self.height}:fps={self.fps}"
         else:
-            vf_anim = f"zoompan=z='min(zoom+0.001,1.10)':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={self.width}x{self.height}:fps={self.fps}"
+            vf_anim = f"zoompan=z=1.12:d={total_frames}:x='if(lte(on,1),0,min(iw-iw/zoom,x+1.2))':y='ih/2-(ih/zoom/2)':s={self.width}x{self.height}:fps={self.fps}"
 
         cmd = [
             "ffmpeg", "-y",
@@ -66,6 +63,16 @@ class VideoEngine:
 
         return output_segment_path
 
+    def get_gameplay_background(self) -> Optional[Path]:
+        """Returns a background parkour gameplay video if available in assets/backgrounds."""
+        bg_dir = ASSETS_DIR / "backgrounds"
+        if not bg_dir.exists():
+            return None
+        videos = list(bg_dir.glob("*.mp4"))
+        if videos:
+            return random.choice(videos)
+        return None
+
     def assemble_final_video(
         self,
         segment_paths: List[Path],
@@ -73,56 +80,90 @@ class VideoEngine:
         voice_audio_path: Path,
         bgm_audio_path: Path,
         output_video_path: Path,
-        whoosh_sfx_path: Optional[Path] = None
+        whoosh_sfx_path: Optional[Path] = None,
+        duration: Optional[float] = None
     ) -> Path:
         """
-        Concatenates segments, overlays dynamic subtitle stream, mixes audio, applies anti-shadowban
-        noise & metadata spoofing, and produces final ready-to-publish MP4.
+        Assembles full video with background parkour gameplay or image segments,
+        overlays centered dynamic subtitles, mixes audio with ducking, and applies anti-shadowban.
         """
-        work_dir = output_video_path.parent
-        concat_txt = work_dir / "concat_list.txt"
+        gameplay_bg = self.get_gameplay_background() if settings.use_gameplay_background else None
         
-        with open(concat_txt, "w") as f:
-            for p in segment_paths:
-                f.write(f"file '{p.resolve()}'\n")
+        # Audio mixing filter
+        af_filter = "[2:a]volume=1.0[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
 
-        # Video filter: apply subtle grain on background video, then overlay dynamic subtitles
-        if settings.apply_film_grain:
-            vf_filter = f"[0:v]noise=alls={settings.grain_intensity}:allf=t+u[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
+        if gameplay_bg and gameplay_bg.exists():
+            logger.info(f"Using viral gameplay background: {gameplay_bg.name}")
+            # Pick a random start offset in the parkour footage
+            start_offset = random.randint(0, 100)
+            
+            # Background filter with subtle grain & dynamic subtitles overlay
+            if settings.apply_film_grain:
+                vf_filter = f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height},noise=alls={settings.grain_intensity}:allf=t+u[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
+            else:
+                vf_filter = f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height}[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(start_offset),
+                "-i", str(gameplay_bg),
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(subtitles_concat_path),
+                "-i", str(voice_audio_path),
+                "-i", str(bgm_audio_path),
+                "-filter_complex", f"{vf_filter};{af_filter}",
+                "-map", "[vout]",
+                "-map", "[aout]",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "18",
+                "-profile:v", "high",
+                "-level", "4.2",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", self.audio_bitrate,
+                "-ar", "44100",
+                "-ac", "2",
+                "-movflags", "+faststart",
+                "-shortest"
+            ]
         else:
-            vf_filter = "[0:v][1:v]overlay=0:0:shortest=1[vout]"
+            # Fallback to concat image segments
+            work_dir = output_video_path.parent
+            concat_txt = work_dir / "concat_list.txt"
+            with open(concat_txt, "w") as f:
+                for p in segment_paths:
+                    f.write(f"file '{p.resolve()}'\n")
 
-        # Audio mixing: Primary TTS Voiceover + Background Ambient Music
-        af_filter = "[2:a]volume=1.0[voice];[3:a]volume=0.10[bgm];[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            if settings.apply_film_grain:
+                vf_filter = f"[0:v]noise=alls={settings.grain_intensity}:allf=t+u[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
+            else:
+                vf_filter = "[0:v][1:v]overlay=0:0:shortest=1[vout]"
 
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_txt),
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(subtitles_concat_path),
-            "-i", str(voice_audio_path),
-            "-i", str(bgm_audio_path),
-            "-filter_complex", f"{vf_filter};{af_filter}",
-            "-map", "[vout]",
-            "-map", "[aout]",
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "19",
-            "-profile:v", "high",
-            "-level", "4.2",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", self.audio_bitrate,
-            "-ar", "44100",
-            "-ac", "2",
-            "-movflags", "+faststart",
-            "-shortest",
-        ]
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_txt),
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(subtitles_concat_path),
+                "-i", str(voice_audio_path),
+                "-i", str(bgm_audio_path),
+                "-filter_complex", f"{vf_filter};{af_filter}",
+                "-map", "[vout]",
+                "-map", "[aout]",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "18",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", self.audio_bitrate,
+                "-shortest"
+            ]
 
-        # Anti-Shadowban metadata spoofing (iPhone EXIF + bitexact stripping)
+        # Anti-Shadowban metadata spoofing (iPhone EXIF + bitexact)
         if settings.spoof_device_metadata:
             cmd.extend([
                 "-fflags", "+bitexact",
@@ -140,8 +181,5 @@ class VideoEngine:
         if result.returncode != 0:
             logger.error(f"FFmpeg assembly failed: {result.stderr.decode('utf-8')}")
             raise RuntimeError(f"FFmpeg error: {result.stderr.decode('utf-8')}")
-
-        if concat_txt.exists():
-            concat_txt.unlink()
 
         return output_video_path

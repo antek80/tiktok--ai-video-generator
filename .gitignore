@@ -5,3 +5,7 @@ temp/
 output/
 .env
 .DS_Store
+
+assets/backgrounds/*.mp4
+assets/backgrounds/*.webm
+

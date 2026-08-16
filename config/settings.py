@@ -19,15 +19,16 @@ class Settings(BaseModel):
     
     # Language & Voice Settings
     default_language: str = "en"
-    default_voice: str = "en-US-ChristopherNeural"  # Deep natural cinematic English voice
+    default_voice: str = "en-US-BrianMultilingualNeural"  # Viral TikTok storytelling voice
     default_voice_pl: str = "pl-PL-MarekNeural"
-    default_voice_en: str = "en-US-ChristopherNeural"
+    default_voice_en: str = "en-US-BrianMultilingualNeural"
     
     # Video Specifications
     video_width: int = 1080
     video_height: int = 1920
     fps: int = 30
     audio_bitrate: str = "192k"
+    use_gameplay_background: bool = True  # High-retention Minecraft Parkour / GTA gameplay loops
     
     # Anti-Fingerprinting (Anti-Shadowban)
     apply_film_grain: bool = True
@@ -38,13 +39,13 @@ class Settings(BaseModel):
     
     # Subtitle Styles (Hormozi / TikTok Viral Style)
     sub_font_name: str = "Impact"  # or "Arial Black"
-    sub_font_size: int = 26
+    sub_font_size: int = 74
     sub_primary_color: str = "&H00FFFFFF"  # White in ASS (&HAABBGGRR)
     sub_highlight_color: str = "&H0000FFFF"  # Vibrant Yellow in ASS
     sub_outline_color: str = "&H00000000"  # Black outline
-    sub_outline_width: int = 3
-    sub_shadow_width: int = 2
-    sub_words_per_batch: int = 2  # 1-3 words visible on screen at once
+    sub_outline_width: int = 4
+    sub_shadow_width: int = 3
+    sub_words_per_batch: int = 2  # 1-2 words visible on screen at once (rapid-fire)
     
     # TikTok Automation Settings
     tiktok_session_dir: Path = Path.home() / ".tiktok_automation_session"
