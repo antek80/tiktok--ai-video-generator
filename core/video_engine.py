@@ -80,66 +80,108 @@ class VideoEngine:
         voice_audio_path: Path,
         bgm_audio_path: Path,
         output_video_path: Path,
+        cards_concat_path: Optional[Path] = None,
         whoosh_sfx_path: Optional[Path] = None,
         duration: Optional[float] = None
     ) -> Path:
         """
-        Assembles full video with background parkour gameplay or image segments,
-        overlays centered dynamic subtitles, mixes audio with ducking, and applies anti-shadowban.
+        Assembles full video with background parkour gameplay, overlays floating entity photo cards,
+        Hormozi karaoke subtitles, mixes audio, and applies anti-shadowban.
         """
         gameplay_bg = self.get_gameplay_background() if settings.use_gameplay_background else None
         
-        # Audio mixing filter
-        af_filter = "[2:a]volume=1.0[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
-
         if gameplay_bg and gameplay_bg.exists():
             logger.info(f"Using viral gameplay background: {gameplay_bg.name}")
-            # Pick a random start offset in the parkour footage
             start_offset = random.randint(0, 100)
             
-            # Background filter with subtle grain & dynamic subtitles overlay
-            if settings.apply_film_grain:
-                vf_filter = f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height},noise=alls={settings.grain_intensity}:allf=t+u[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
-            else:
-                vf_filter = f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height}[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
+            if cards_concat_path and cards_concat_path.exists():
+                # Triple Layer: [0] Background + [1] Photo Cards + [2] Subtitles
+                if settings.apply_film_grain:
+                    vf_filter = (
+                        f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height},noise=alls={settings.grain_intensity}:allf=t+u[vbase];"
+                        f"[vbase][1:v]overlay=0:0:shortest=1[vcards];"
+                        f"[vcards][2:v]overlay=0:0:shortest=1[vout]"
+                    )
+                else:
+                    vf_filter = (
+                        f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height}[vbase];"
+                        f"[vbase][1:v]overlay=0:0:shortest=1[vcards];"
+                        f"[vcards][2:v]overlay=0:0:shortest=1[vout]"
+                    )
+                af_filter = "[3:a]volume=1.0[voice];[4:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
 
-            cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(start_offset),
-                "-i", str(gameplay_bg),
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(subtitles_concat_path),
-                "-i", str(voice_audio_path),
-                "-i", str(bgm_audio_path),
-                "-filter_complex", f"{vf_filter};{af_filter}",
-                "-map", "[vout]",
-                "-map", "[aout]",
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", "18",
-                "-profile:v", "high",
-                "-level", "4.2",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                "-b:a", self.audio_bitrate,
-                "-ar", "44100",
-                "-ac", "2",
-                "-movflags", "+faststart",
-                "-shortest"
-            ]
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-ss", str(start_offset),
+                    "-i", str(gameplay_bg),
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", str(cards_concat_path),
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", str(subtitles_concat_path),
+                    "-i", str(voice_audio_path),
+                    "-i", str(bgm_audio_path),
+                    "-filter_complex", f"{vf_filter};{af_filter}",
+                    "-map", "[vout]",
+                    "-map", "[aout]",
+                    "-c:v", "libx264",
+                    "-preset", "fast",
+                    "-crf", "18",
+                    "-profile:v", "high",
+                    "-level", "4.2",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-b:a", self.audio_bitrate,
+                    "-ar", "44100",
+                    "-ac", "2",
+                    "-movflags", "+faststart",
+                    "-shortest"
+                ]
+            else:
+                # Double Layer: [0] Background + [1] Subtitles
+                if settings.apply_film_grain:
+                    vf_filter = f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height},noise=alls={settings.grain_intensity}:allf=t+u[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
+                else:
+                    vf_filter = f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height}[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
+
+                af_filter = "[2:a]volume=1.0[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-ss", str(start_offset),
+                    "-i", str(gameplay_bg),
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", str(subtitles_concat_path),
+                    "-i", str(voice_audio_path),
+                    "-i", str(bgm_audio_path),
+                    "-filter_complex", f"{vf_filter};{af_filter}",
+                    "-map", "[vout]",
+                    "-map", "[aout]",
+                    "-c:v", "libx264",
+                    "-preset", "fast",
+                    "-crf", "18",
+                    "-profile:v", "high",
+                    "-level", "4.2",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-b:a", self.audio_bitrate,
+                    "-ar", "44100",
+                    "-ac", "2",
+                    "-movflags", "+faststart",
+                    "-shortest"
+                ]
         else:
-            # Fallback to concat image segments
+            # Fallback
             work_dir = output_video_path.parent
             concat_txt = work_dir / "concat_list.txt"
             with open(concat_txt, "w") as f:
                 for p in segment_paths:
                     f.write(f"file '{p.resolve()}'\n")
 
-            if settings.apply_film_grain:
-                vf_filter = f"[0:v]noise=alls={settings.grain_intensity}:allf=t+u[vbase];[vbase][1:v]overlay=0:0:shortest=1[vout]"
-            else:
-                vf_filter = "[0:v][1:v]overlay=0:0:shortest=1[vout]"
+            vf_filter = "[0:v][1:v]overlay=0:0:shortest=1[vout]"
+            af_filter = "[2:a]volume=1.0[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
 
             cmd = [
                 "ffmpeg", "-y",
@@ -176,7 +218,7 @@ class VideoEngine:
 
         cmd.append(str(output_video_path))
 
-        logger.info(f"Rendering final anti-shadowban video to: {output_video_path}")
+        logger.info(f"Rendering final multi-layer video to: {output_video_path}")
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             logger.error(f"FFmpeg assembly failed: {result.stderr.decode('utf-8')}")
