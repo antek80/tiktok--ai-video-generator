@@ -152,25 +152,25 @@ class AssetManager:
         return output_path
 
     def draw_tiktok_heart(self, size: int = 280) -> Image.Image:
-        """Draws the signature TikTok #FE2C55 heart with glossy highlight."""
-        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        color = (254, 44, 85, 255) # Official TikTok red
+        """Draws a clean, official TikTok #FE2C55 vector heart with smooth edges."""
+        scale = 3
+        s = size * scale
+        h_img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        h_draw = ImageDraw.Draw(h_img)
         
         import math
         points = []
-        for t in range(0, 360, 2):
-            rad = math.radians(t)
-            x = 16 * (math.sin(rad) ** 3)
-            y = -(13 * math.cos(rad) - 5 * math.cos(2 * rad) - 2 * math.cos(3 * rad) - math.cos(4 * rad))
-            scale = size / 38.0
-            cx = size / 2.0 + x * scale
-            cy = size / 2.0 + y * scale + (size * 0.04)
+        steps = 360
+        for i in range(steps):
+            t = (i / steps) * 2 * math.pi
+            x = 16 * (math.sin(t) ** 3)
+            y = -(13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t))
+            cx = (s / 2.0) + (x * (s / 38.0))
+            cy = (s / 2.0) + (y * (s / 38.0)) + (s * 0.03)
             points.append((cx, cy))
             
-        draw.polygon(points, fill=color)
-        draw.ellipse([size * 0.24, size * 0.22, size * 0.42, size * 0.38], fill=(255, 255, 255, 110))
-        return img
+        h_draw.polygon(points, fill=(254, 44, 85, 255))
+        return h_img.resize((size, size), Image.Resampling.LANCZOS)
 
     def create_like_outro_overlay(
         self,
@@ -180,7 +180,10 @@ class AssetManager:
         video_height: int = 1920
     ) -> Path:
         """
-        Generates a 2-second animated double-tap TikTok heart pop-in at the end of the video.
+        Generates an authentic 2-second TikTok Double-Tap Like Heart animation:
+        - Expanding glowing pulse ripple ring
+        - Elastic bounce pop-in of vibrant #FE2C55 heart
+        - 100% clean vector aesthetics (no artifacts/grey spots)
         """
         output_dir.mkdir(parents=True, exist_ok=True)
         outro_len = 2.0
@@ -190,53 +193,66 @@ class AssetManager:
         blank_png = output_dir / "outro_blank.png"
         Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0)).save(blank_png)
 
-        base_heart = self.draw_tiktok_heart(size=280)
+        base_heart = self.draw_tiktok_heart(size=320)
         frames = []
 
         import math
         for f in range(total_frames):
             progress = f / float(total_frames)
             canvas = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
-            
-            # Pop-in scaling with overshoot
-            if progress < 0.25:
-                # 0.0 -> 1.35
-                p = progress / 0.25
-                scale = 0.1 + (1.25 * math.sin(p * math.pi / 2))
+            draw = ImageDraw.Draw(canvas)
+
+            center_x = video_width // 2
+            center_y = (video_height // 2) - 140
+
+            # 1. Expanding Ripple Ring (Classic Double-Tap effect)
+            if progress < 0.55:
+                ring_p = progress / 0.55
+                ring_r = int(60 + 170 * ring_p)
+                ring_alpha = int(240 * (1.0 - ring_p))
+                if ring_alpha > 0 and ring_r > 0:
+                    draw.ellipse(
+                        [center_x - ring_r, center_y - ring_r, center_x + ring_r, center_y + ring_r],
+                        outline=(254, 44, 85, ring_alpha),
+                        width=6
+                    )
+
+            # 2. Heart Scaling with Smooth Pop-in Bounce
+            if progress < 0.28:
+                p = progress / 0.28
+                scale = 0.15 + (1.25 * math.sin(p * math.pi / 2))
                 alpha = int(255 * p)
-            elif progress < 0.45:
-                # 1.35 -> 1.0 bounce back
-                p = (progress - 0.25) / 0.2
-                scale = 1.35 - (0.35 * p)
+            elif progress < 0.55:
+                p = (progress - 0.28) / 0.27
+                scale = 1.4 - (0.4 * p)
                 alpha = 255
             else:
-                # Gentle floating pulse
-                p = (progress - 0.45) / 0.55
-                scale = 1.0 + (0.06 * math.sin(p * 4 * math.pi))
+                p = (progress - 0.55) / 0.45
+                scale = 1.0 + (0.05 * math.sin(p * 2 * math.pi))
                 alpha = 255
 
-            w = max(10, int(280 * scale))
-            h = max(10, int(280 * scale))
+            w = max(10, int(320 * scale))
+            h = max(10, int(320 * scale))
             scaled_heart = base_heart.resize((w, h), Image.Resampling.LANCZOS)
             
-            hx = (video_width - w) // 2
-            hy = (video_height // 2) - 160  # Positioned right above center subtitles
+            hx = center_x - (w // 2)
+            hy = center_y - (h // 2)
 
-            # Shadow / glow
-            shadow = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
-            s_draw = ImageDraw.Draw(shadow)
-            s_draw.ellipse([hx - 20, hy - 20, hx + w + 20, hy + h + 20], fill=(254, 44, 85, int(70 * (alpha / 255.0))))
-            shadow = shadow.filter(ImageFilter.GaussianBlur(25))
-            canvas = Image.alpha_composite(canvas, shadow)
+            # 3. Soft Glowing Shadow
+            glow = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
+            g_draw = ImageDraw.Draw(glow)
+            g_draw.ellipse([hx - 25, hy - 25, hx + w + 25, hy + h + 25], fill=(254, 44, 85, int(90 * (alpha / 255.0))))
+            glow = glow.filter(ImageFilter.GaussianBlur(30))
+            canvas = Image.alpha_composite(canvas, glow)
 
-            # Paste heart
+            # 4. Composite Clean Heart
             canvas.paste(scaled_heart, (hx, hy), scaled_heart)
 
             frame_path = output_dir / f"heart_{f:02d}.png"
             canvas.save(frame_path, "PNG")
             frames.append((frame_path, 1.0 / fps))
 
-        # Build outro concat file
+        # Concat demuxer file
         concat_path = output_dir / "outro_concat.txt"
         with open(concat_path, "w", encoding="utf-8") as f:
             lead_in_dur = max(0.1, total_duration - outro_len)
