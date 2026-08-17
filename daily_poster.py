@@ -141,6 +141,8 @@ def get_next_topic() -> str:
                             return new_topic
                 except Exception:
                     continue
+        except Exception as e:
+            logger.warning(f"Error generating topic with Gemini: {e}")
 
     return f"Untold Dark Mystery of History #{len(history) + 1}"
 
