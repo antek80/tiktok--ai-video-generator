@@ -49,7 +49,7 @@ class Settings(BaseModel):
     
     # TikTok Automation Settings
     tiktok_session_dir: Path = Path.home() / ".tiktok_automation_session"
-    headless: bool = False
+    headless: bool = True
     simulate_human_delays: bool = True
     declare_ai_content: bool = False  # Domyślnie wyłączone dla formatu storytelling / lektora
 
