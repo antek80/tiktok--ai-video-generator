@@ -17,12 +17,14 @@ from rich.panel import Panel
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from config.settings import settings
 from daily_poster import run_daily_job, POSTED_HISTORY_FILE
 import json
 
 console = Console()
 
-DEFAULT_SCHEDULE_HOURS = ["08:30", "10:00", "11:30", "13:00", "14:30", "16:00", "17:30", "19:00", "20:30", "22:00"]
+def get_default_schedule() -> list[str]:
+    return settings.get_schedule_slots()
 
 
 def get_next_run_time(schedule_times: list[str]) -> tuple[datetime, str]:
@@ -113,10 +115,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TikTok AI Video Generator Autopilot Daemon")
     parser.add_argument("--now", action="store_true", help="Run 1 publication immediately upon start")
     parser.add_argument("--interval", type=int, default=None, help="Interval in minutes between posts (overrides fixed schedule)")
-    parser.add_argument("--slots", nargs="+", default=DEFAULT_SCHEDULE_HOURS, help="Specific daily post times (e.g. --slots 09:00 13:00 18:00 21:00)")
+    parser.add_argument("--slots", nargs="+", default=None, help="Specific daily post times (e.g. --slots 09:00 13:00 18:00 21:00)")
     args = parser.parse_args()
 
+    schedule = args.slots if args.slots else get_default_schedule()
+
     try:
-        asyncio.run(main_loop(schedule=args.slots, interval_mins=args.interval, run_immediately=args.now))
+        asyncio.run(main_loop(schedule=schedule, interval_mins=args.interval, run_immediately=args.now))
     except KeyboardInterrupt:
         console.print("\n[bold yellow]👋 Autopilot stopped by user.[/bold yellow]")

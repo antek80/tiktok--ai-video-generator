@@ -53,4 +53,40 @@ class Settings(BaseModel):
     simulate_human_delays: bool = True
     declare_ai_content: bool = False  # Domyślnie wyłączone dla formatu storytelling / lektora
 
+    # Daily Schedule Settings (from .env)
+    posts_per_day: int = Field(default_factory=lambda: int(os.getenv("POSTS_PER_DAY", "4")))
+    schedule_times: str = Field(default_factory=lambda: os.getenv("SCHEDULE_TIMES", ""))
+
+    def get_schedule_slots(self) -> list:
+        """Returns the list of HH:MM schedule slots based on .env configuration."""
+        if self.schedule_times and self.schedule_times.strip():
+            slots = [s.strip() for s in self.schedule_times.split(",") if ":" in s]
+            if slots:
+                return sorted(slots)
+
+        count = max(1, min(self.posts_per_day, 16))
+        # Standard predefined optimal schedules
+        predefined = {
+            1: ["18:00"],
+            2: ["12:30", "19:00"],
+            3: ["10:00", "15:00", "19:30"],
+            4: ["09:00", "13:00", "17:00", "21:00"],
+            5: ["09:00", "12:00", "15:00", "18:00", "21:00"],
+            6: ["08:30", "11:00", "13:30", "16:00", "18:30", "21:00"],
+            8: ["08:30", "10:30", "12:30", "14:30", "16:30", "18:30", "20:30", "22:00"],
+            10: ["08:30", "10:00", "11:30", "13:00", "14:30", "16:00", "17:30", "19:00", "20:30", "22:00"]
+        }
+        if count in predefined:
+            return predefined[count]
+
+        # Dynamic spacing between 08:30 and 22:30
+        start_min = 8 * 60 + 30
+        end_min = 22 * 60 + 30
+        step = (end_min - start_min) / (count - 1) if count > 1 else 0
+        slots = []
+        for i in range(count):
+            cur = int(start_min + i * step)
+            slots.append(f"{cur // 60:02d}:{cur % 60:02d}")
+        return slots
+
 settings = Settings()

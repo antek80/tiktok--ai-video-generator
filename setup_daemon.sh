@@ -22,6 +22,17 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # Unload existing if loaded
     launchctl unload "$PLIST_PATH" 2>/dev/null || true
 
+    # Generate intervals dynamically based on .env
+    INTERVALS_XML=$($PYTHON_EXEC -c "
+from config.settings import settings
+slots = settings.get_schedule_slots()
+xml = ''
+for s in slots:
+    h, m = map(int, s.split(':'))
+    xml += f'        <dict><key>Hour</key><integer>{h}</integer><key>Minute</key><integer>{m}</integer></dict>\n'
+print(xml.rstrip())
+")
+
     cat <<EOF > "$PLIST_PATH"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -35,16 +46,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     </array>
     <key>StartCalendarInterval</key>
     <array>
-        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>0</integer></dict>
+$INTERVALS_XML
     </array>
     <key>StandardOutPath</key>
     <string>$PROJECT_DIR/launchd_stdout.log</string>
