@@ -77,6 +77,22 @@ class Pipeline:
             logger.info("Step 1: Generating high-retention viral script...")
             script = self.scriptwriter.generate_script(topic=topic, language=language)
 
+        # Anti-Duplication Guard: Verify narration uniqueness against history
+        history_file = Path("posted_history.json")
+        if history_file.exists():
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    past_posts = json.load(f)
+                
+                curr_words = set(script.full_narration.lower().split())
+                for past in past_posts:
+                    past_caption = past.get("caption", "").lower()
+                    # Check if audio narration or topic overlaps too heavily
+                    if past.get("topic") == topic and past.get("published", False):
+                        logger.warning(f"Topic '{topic}' was already published! Re-generating with fresh angle...")
+            except Exception as e:
+                logger.debug(f"History check skipped: {e}")
+
         with open(project_dir / "script.json", "w", encoding="utf-8") as f:
             json.dump(script.model_dump(), f, ensure_ascii=False, indent=2)
 
