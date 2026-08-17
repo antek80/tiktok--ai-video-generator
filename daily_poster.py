@@ -124,12 +124,16 @@ def get_next_topic() -> str:
             from google import genai
             client = genai.Client(api_key=settings.gemini_api_key)
             prompt = f"Generate ONE short, viral, mind-blowing storytelling topic in English for TikTok (unexplained mysteries, deep ocean, cosmos, ancient secrets, psychology). Return ONLY the title. Do not repeat these: {list(used_topics)[-15:]}"
-            res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-            new_topic = res.text.strip().strip('"').strip("'")
-            if new_topic:
-                return new_topic
-        except Exception as e:
-            logger.warning(f"Error generating topic with Gemini: {e}")
+            candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+            for mod in candidate_models:
+                try:
+                    res = client.models.generate_content(model=mod, contents=prompt)
+                    if res and res.text:
+                        new_topic = res.text.strip().strip('"').strip("'")
+                        if new_topic:
+                            return new_topic
+                except Exception:
+                    continue
 
     return f"Untold Dark Mystery of History #{len(history) + 1}"
 

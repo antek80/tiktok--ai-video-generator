@@ -523,13 +523,24 @@ Generate a viral, fact-packed JSON script matching this schema:
   "hashtags": ["#topic", "#facts", "#mystery", "#fyp", "#viral"]
 }}"""
 
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=[system_instruction, prompt],
-                    config={"response_mime_type": "application/json"}
-                )
-                data = json.loads(response.text)
-                return VideoScript(**data)
+                candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+                response = None
+                for mod in candidate_models:
+                    try:
+                        response = client.models.generate_content(
+                            model=mod,
+                            contents=[system_instruction, prompt],
+                            config={"response_mime_type": "application/json"}
+                        )
+                        if response and response.text:
+                            logger.info(f"Successfully generated script with Gemini model: {mod}")
+                            break
+                    except Exception as model_err:
+                        logger.debug(f"Model {mod} not available or failed: {model_err}, trying next...")
+
+                if response and response.text:
+                    data = json.loads(response.text)
+                    return VideoScript(**data)
             except Exception as e:
                 logger.warning(f"Gemini API generation failed: {e}. Using curated database.")
 
