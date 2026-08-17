@@ -99,10 +99,18 @@ class TikTokUploader:
             except Exception:
                 logger.warning("Timed out waiting for post_video_button enabled state, proceeding...")
 
-            # Construct full description with hashtags
-            full_text = caption
+            # Construct clean, unique description with deduplicated hashtags
+            existing_words = caption.split()
+            unique_tags = []
             if hashtags:
-                full_text += " " + " ".join(hashtags)
+                for tag in hashtags:
+                    formatted_tag = tag if tag.startswith("#") else f"#{tag}"
+                    if formatted_tag.lower() not in [w.lower() for w in existing_words]:
+                        unique_tags.append(formatted_tag)
+            
+            full_text = caption
+            if unique_tags:
+                full_text = f"{caption.strip()} {' '.join(unique_tags)}"
 
             # Set Caption
             logger.info("Entering caption and hashtags...")
