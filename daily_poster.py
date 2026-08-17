@@ -124,7 +124,14 @@ def get_next_topic() -> str:
             from google import genai
             client = genai.Client(api_key=settings.gemini_api_key)
             prompt = f"Generate ONE short, viral, mind-blowing storytelling topic in English for TikTok (unexplained mysteries, deep ocean, cosmos, ancient secrets, psychology). Return ONLY the title. Do not repeat these: {list(used_topics)[-15:]}"
-            candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+            candidate_models = [
+                "gemini-3.7-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+                "gemini-2.5-flash-lite"
+            ]
             for mod in candidate_models:
                 try:
                     res = client.models.generate_content(model=mod, contents=prompt)

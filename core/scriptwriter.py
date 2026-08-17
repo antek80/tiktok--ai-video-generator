@@ -523,7 +523,14 @@ Generate a viral, fact-packed JSON script matching this schema:
   "hashtags": ["#topic", "#facts", "#mystery", "#fyp", "#viral"]
 }}"""
 
-                candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+                candidate_models = [
+                    "gemini-3.7-flash",
+                    "gemini-3.6-flash",
+                    "gemini-3.5-flash",
+                    "gemini-2.5-flash",
+                    "gemini-2.5-pro",
+                    "gemini-2.5-flash-lite"
+                ]
                 response = None
                 for mod in candidate_models:
                     try:
