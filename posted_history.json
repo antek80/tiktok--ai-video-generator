@@ -390,5 +390,49 @@
       "#viral"
     ],
     "published": true
+  },
+  {
+    "timestamp": "2026-08-17T20:31:44.512826",
+    "topic": "The Fermi Paradox – Where Are All the Alien Civilizations",
+    "video_path": "/Users/antoniborawski/repos/tiktok--ai-video-generator/output/video_bfd5d2b9.mp4",
+    "duration": 36.144,
+    "caption": "Where is all the alien life? 👽 The terrifying Fermi Paradox explained #fermiparadox #spacefacts #alienlife #astronomy #mindblowing #fyp",
+    "hashtags": [
+      "#fermiparadox",
+      "#alienlife",
+      "#spacefacts",
+      "#cosmos",
+      "#scifi",
+      "#fyp"
+    ],
+    "published": true
+  },
+  {
+    "timestamp": "2026-08-17T22:02:03.356244",
+    "topic": "The Great Attractor – The Invisible Force Pulling Our Galaxy",
+    "video_path": "/Users/antoniborawski/repos/tiktok--ai-video-generator/output/video_14103da0.mp4",
+    "duration": 41.016,
+    "caption": "The invisible gravitational monster dragging our galaxy 🌌 The Great Attractor #greatattractor #spacefacts #astronomy #universe #fyp",
+    "hashtags": [
+      "#greatattractor",
+      "#spacefacts",
+      "#astronomy",
+      "#cosmos",
+      "#mindblowing",
+      "#fyp"
+    ],
+    "published": true
+  },
+  {
+    "timestamp": "2026-08-18T06:31:43.418655",
+    "topic": "The Simulation Hypothesis – Are We Living in a Computer Code",
+    "video_path": "/Users/antoniborawski/repos/tiktok--ai-video-generator/output/video_1164c08a.mp4",
+    "duration": 41.064,
+    "caption": "Are we living in a computer simulation? 💻 Matrix theory explained by quantum physics #simulationhypothesis #matrix #physics #mindblowing #fyp",
+    "hashtags": [
+      "#simulationhypothesis",
+      "#matrix #quantumphysics #philosophy #mindblowing #fyp"
+    ],
+    "published": true
   }
 ]
