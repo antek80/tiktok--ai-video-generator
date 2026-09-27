@@ -14,6 +14,8 @@ class Scene(BaseModel):
     visual_prompt: str
     narration: str
     animation: str = "zoom_in"
+    # Exact English Wikipedia article title whose photo illustrates this scene (set by Gemini)
+    image_query: Optional[str] = None
 
 class VideoScript(BaseModel):
     title: str
@@ -508,7 +510,9 @@ CRITICAL RULES:
 2. DO NOT write vague filler like "Scientists found a clue" or "This will change your perspective". Tell the ACTUAL FACTS of what happened!
 3. The hook in scene 1 must immediately hit the viewer with the craziest real fact in 1 punchy sentence.
 4. Keep the total video between 28 and 35 seconds (around 4-5 scenes, about 85-105 words total).
-5. The last scene should ask a question or debate prompt to drive comments."""
+5. The last scene should ask a question or debate prompt to drive comments.
+6. For every scene set "image_query" to the EXACT title of an existing English Wikipedia article whose main photo fits that scene (a real person, place, object or the topic itself, e.g. "Robert Kirshner", "Boötes Void", "Dyson sphere"). Never a description; if unsure, use the topic's own article title.
+7. Hashtags are single words without spaces (e.g. "#spacemystery")."""
 
                 prompt = f"""Topic: {topic}
 Language: {lang_instruction}
@@ -524,7 +528,8 @@ Generate a viral, fact-packed JSON script matching this schema:
       "scene_id": 1,
       "visual_prompt": "Cinematic 9:16 vertical description",
       "narration": "First factual sentence spoken here.",
-      "animation": "zoom_in"
+      "animation": "zoom_in",
+      "image_query": "Exact English Wikipedia article title"
     }}
   ],
   "full_narration": "All scene narrations combined into one smooth story",

@@ -135,9 +135,12 @@ class Pipeline:
 
         # Fetch a pool of DISTINCT real photos up front so each scene can show a
         # different image instead of the same one repeated on every card.
-        image_pool = self.asset_manager.fetch_entity_image_pool(script.title, count=num_scenes)
+        # Gemini scripts carry exact Wikipedia titles per scene; the first one names the
+        # topic far better than a clickbait title like "The Terrifying ... Hole in Space".
+        pool_query = next((s.image_query for s in script.scenes if s.image_query), None) or script.title
+        image_pool = self.asset_manager.fetch_entity_image_pool(pool_query, count=num_scenes)
         if not image_pool:
-            single = self.asset_manager.fetch_real_entity_image(script.title)
+            single = self.asset_manager.fetch_real_entity_image(pool_query, exact_title=pool_query != script.title)
             if single:
                 image_pool = [single]
 
@@ -154,7 +157,11 @@ class Pipeline:
 
             # Prefer a photo matched to what THIS scene actually narrates (e.g. "USS
             # Eldridge" for a sentence about the ship) over a generic topic-wide photo.
-            raw_img = self.asset_manager.fetch_scene_matched_image(scene.narration)
+            raw_img = None
+            if scene.image_query:
+                raw_img = self.asset_manager.fetch_real_entity_image(scene.image_query, exact_title=True)
+            if not raw_img:
+                raw_img = self.asset_manager.fetch_scene_matched_image(scene.narration)
             if not raw_img:
                 raw_img = image_pool[i] if i < len(image_pool) else (image_pool[-1] if image_pool else None)
             generated_overlay = self.asset_manager.create_floating_card_overlay(

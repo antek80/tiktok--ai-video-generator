@@ -115,13 +115,30 @@ class AssetManager:
                 return page_title
         return None
 
-    def fetch_real_entity_image(self, query: str) -> Optional[Image.Image]:
+    @staticmethod
+    def _is_relevant_title(query: str, page_title: str) -> bool:
+        """
+        True when the search hit's article title shares a meaningful word with the query.
+        Full-text search always returns *something* with an image — without this check a
+        phrase like "This Cosmic" lands on a scanned 19th-century book cover.
+        """
+        def words(s: str) -> set:
+            return {w for w in re.findall(r"[a-z0-9]+", s.lower()) if len(w) > 2 and w not in _STOPWORDS}
+        return bool(words(query) & words(page_title))
+
+    def fetch_real_entity_image(self, query: str, exact_title: bool = False) -> Optional[Image.Image]:
         """
         Attempts to search and download a real authentic photo from verified links or Wikipedia.
         Returns PIL Image only if it is a genuine, high-contrast, recognizable photo.
+        With exact_title, `query` is treated as a Wikipedia article title and tried directly first.
         """
         if not query or len(query.strip()) < 3:
             return None
+
+        if exact_title:
+            img = self._fetch_wikipedia_page_thumbnail(query.strip())
+            if img:
+                return img
 
         # Check known verified topics
         known_title = self._resolve_known_page_title(query)
@@ -139,7 +156,7 @@ class AssetManager:
         try:
             url = (
                 "https://en.wikipedia.org/w/api.php?action=query&generator=search"
-                f"&gsrsearch={urllib.parse.quote(clean_query)}&gsrlimit=1"
+                f"&gsrsearch={urllib.parse.quote(clean_query)}&gsrlimit=3"
                 "&prop=pageimages&piprop=thumbnail&pithumbsize=800&format=json"
             )
             req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
@@ -147,6 +164,9 @@ class AssetManager:
                 data = json.loads(resp.read().decode("utf-8"))
                 pages = data.get("query", {}).get("pages", {})
                 for page_id, page_info in pages.items():
+                    if not self._is_relevant_title(clean_query, page_info.get("title", "")):
+                        logger.debug(f"Skipping unrelated search hit '{page_info.get('title')}' for '{clean_query}'")
+                        continue
                     if "thumbnail" in page_info:
                         img_url = page_info["thumbnail"]["source"]
                         # Ignore audio spectrograms / SVG charts

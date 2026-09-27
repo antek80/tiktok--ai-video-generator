@@ -104,8 +104,9 @@ class TikTokUploader:
             unique_tags = []
             if hashtags:
                 for tag in hashtags:
-                    formatted_tag = tag if tag.startswith("#") else f"#{tag}"
-                    if formatted_tag.lower() not in [w.lower() for w in existing_words]:
+                    # Gemini sometimes returns "#space mystery" — a space splits it into a tag plus a stray word
+                    formatted_tag = "#" + "".join(tag.lstrip("#").split())
+                    if len(formatted_tag) > 1 and formatted_tag.lower() not in [w.lower() for w in existing_words]:
                         unique_tags.append(formatted_tag)
             
             full_text = caption
