@@ -52,17 +52,24 @@ class AssetManager:
             return False
 
     def _fetch_wikipedia_page_thumbnail(self, page_title: str) -> Optional[Image.Image]:
-        """Resolves a known Wikipedia page title to its current thumbnail via the REST summary API."""
+        """
+        Resolves a Wikipedia article title (following redirects) to its lead image at up to
+        1280px — the REST summary thumbnail is only ~320px and looks blurry full-width.
+        """
         try:
-            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(page_title)}"
+            url = (
+                "https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&piprop=thumbnail"
+                f"&pithumbsize=1280&redirects=1&format=json&titles={urllib.parse.quote(page_title)}"
+            )
             req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
-            with urllib.request.urlopen(req, timeout=4) as resp:
+            with urllib.request.urlopen(req, timeout=6) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                img_url = data.get("thumbnail", {}).get("source")
-                if not img_url:
-                    return None
+            for page_info in data.get("query", {}).get("pages", {}).values():
+                img_url = page_info.get("thumbnail", {}).get("source")
+                if not img_url or ".svg" in img_url.lower():
+                    continue
                 img_req = urllib.request.Request(img_url, headers={"User-Agent": "TikTokStoryBot/2.0"})
-                with urllib.request.urlopen(img_req, timeout=4) as img_resp:
+                with urllib.request.urlopen(img_req, timeout=8) as img_resp:
                     img = Image.open(io.BytesIO(img_resp.read())).convert("RGBA")
                     if self._is_image_valid_and_visual(img):
                         return img
@@ -116,15 +123,23 @@ class AssetManager:
         return None
 
     @staticmethod
-    def _is_relevant_title(query: str, page_title: str) -> bool:
+    def _is_relevant_title(query: str, page_title: str, strict: bool = False) -> bool:
         """
-        True when the search hit's article title shares a meaningful word with the query.
-        Full-text search always returns *something* with an image — without this check a
-        phrase like "This Cosmic" lands on a scanned 19th-century book cover.
+        True when the search hit's title matches the query. Full-text search always returns
+        *something* with an image — without this check a phrase like "This Cosmic" lands on a
+        scanned 19th-century book cover. Loose: one shared meaningful word (article titles).
+        Strict: most query words (Commons file names, where "Vandenberg Air Force Base"
+        must not pass for "Air Force One").
         """
         def words(s: str) -> set:
             return {w for w in re.findall(r"[a-z0-9]+", s.lower()) if len(w) > 2 and w not in _STOPWORDS}
-        return bool(words(query) & words(page_title))
+        q, t = words(query), words(page_title)
+        if not strict:
+            return bool(q & t)
+        if not q:
+            return False
+        needed = len(q) if len(q) <= 3 else max(2, int(len(q) * 0.6 + 0.5))
+        return len(q & t) >= needed
 
     def fetch_real_entity_image(self, query: str, exact_title: bool = False) -> Optional[Image.Image]:
         """
@@ -157,7 +172,7 @@ class AssetManager:
             url = (
                 "https://en.wikipedia.org/w/api.php?action=query&generator=search"
                 f"&gsrsearch={urllib.parse.quote(clean_query)}&gsrlimit=3"
-                "&prop=pageimages&piprop=thumbnail&pithumbsize=800&format=json"
+                "&prop=pageimages&piprop=thumbnail&pithumbsize=1280&format=json"
             )
             req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
             with urllib.request.urlopen(req, timeout=4) as resp:
@@ -220,12 +235,16 @@ class AssetManager:
             url = (
                 "https://commons.wikimedia.org/w/api.php?action=query&generator=search"
                 f"&gsrsearch={urllib.parse.quote(clean_query)}&gsrnamespace=6&gsrlimit=15"
-                "&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json"
+                "&prop=imageinfo&iiprop=url&iiurlwidth=1280&format=json"
             )
             req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 for page_info in data.get("query", {}).get("pages", {}).values():
+                    # Full-text search also matches descriptions that merely mention the
+                    # topic (a rocket launch for "Air Force One") — require it in the file name
+                    if not self._is_relevant_title(clean_query, page_info.get("title", ""), strict=True):
+                        continue
                     infos = page_info.get("imageinfo") or []
                     if infos:
                         img_url = infos[0].get("thumburl") or infos[0].get("url")
@@ -242,7 +261,7 @@ class AssetManager:
             url = (
                 "https://commons.wikimedia.org/w/api.php?action=query&generator=categorymembers"
                 f"&gcmtitle={cat_title}&gcmtype=file&gcmlimit=25"
-                "&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json"
+                "&prop=imageinfo&iiprop=url&iiurlwidth=1280&format=json"
             )
             req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -478,6 +497,174 @@ class AssetManager:
                 f.write(f"file '{frames[-1][0].resolve()}'\n")
 
         return concat_path
+
+    # ------------------------------------------------------------------
+    # Retention overlays: opening hook and closing comment prompt
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _impact_font(size: int) -> ImageFont.FreeTypeFont:
+        for font_path in ("/System/Library/Fonts/Supplemental/Impact.ttf",
+                          "/System/Library/Fonts/Supplemental/Arial Bold.ttf"):
+            if Path(font_path).exists():
+                return ImageFont.truetype(font_path, size)
+        return ImageFont.load_default()
+
+    @staticmethod
+    def _wrap(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> List[str]:
+        lines, current = [], ""
+        for word in text.split():
+            trial = f"{current} {word}".strip()
+            if draw.textlength(trial, font=font) <= max_width or not current:
+                current = trial
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines
+
+    @staticmethod
+    def _write_overlay_concat(concat_path: Path, blank_png: Path, frames: List[Path], fps: int,
+                              start: float, hold_last_until: float, total_duration: float) -> Path:
+        """
+        Concat file spanning the WHOLE video (overlays use shortest=1, so a short stream would
+        cut the video): blank until `start`, the frames, last frame held until
+        `hold_last_until`, then blank to the end.
+        """
+        anim_end = start + len(frames) / fps
+        hold_end = max(anim_end, hold_last_until)
+        with open(concat_path, "w", encoding="utf-8") as f:
+            if start > 0.01:
+                f.write(f"file '{blank_png.resolve()}'\nduration {start:.4f}\n")
+            for i, frame in enumerate(frames):
+                dur = 1.0 / fps
+                if i == len(frames) - 1:
+                    dur += hold_end - anim_end
+                f.write(f"file '{frame.resolve()}'\nduration {dur:.4f}\n")
+            tail = blank_png
+            if hold_end < total_duration + 1.0:
+                f.write(f"file '{blank_png.resolve()}'\nduration {total_duration + 1.0 - hold_end:.4f}\n")
+            elif frames:
+                tail = frames[-1]
+            # concat demuxer ignores the last entry's duration, so repeat the final file
+            f.write(f"file '{tail.resolve()}'\n")
+        return concat_path
+
+    def create_hook_overlay(self, output_dir: Path, hook_text: str, total_duration: float,
+                            video_width: int = 1080, video_height: int = 1920, center_y: int = 480,
+                            length: float = 2.2) -> Path:
+        """Big pop-in ALL-CAPS headline for the first ~2s — the scroll-stopper."""
+        import math
+        output_dir.mkdir(parents=True, exist_ok=True)
+        fps = 30
+        blank_png = output_dir / "hook_blank.png"
+        Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0)).save(blank_png)
+
+        font = self._impact_font(118)
+        probe = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
+        lines = self._wrap(probe, hook_text.upper().strip(), font, video_width - 160)[:3]
+        line_h = 132
+        text_w = max(probe.textlength(l, font=font) for l in lines)
+        block_w, block_h = int(text_w + 90), line_h * len(lines) + 50
+
+        # Pre-render the headline block once, then scale it per frame
+        block = Image.new("RGBA", (block_w, block_h), (0, 0, 0, 0))
+        bd = ImageDraw.Draw(block)
+        bd.rounded_rectangle([0, 0, block_w - 1, block_h - 1], radius=28, fill=(254, 44, 85, 245))
+        for i, line in enumerate(lines):
+            lw = bd.textlength(line, font=font)
+            bd.text(((block_w - lw) / 2, 18 + i * line_h), line, font=font, fill=(255, 255, 255, 255),
+                    stroke_width=6, stroke_fill=(0, 0, 0, 255))
+        block = block.rotate(-3, resample=Image.Resampling.BICUBIC, expand=True)
+
+        frames = []
+        n = int(length * fps)
+        for f in range(n):
+            t = f / fps
+            if t < 0.18:                      # overshoot pop-in
+                scale = 0.55 + 0.6 * math.sin((t / 0.18) * math.pi / 2)
+            elif t < 0.32:
+                scale = 1.15 - 0.15 * ((t - 0.18) / 0.14)
+            else:                             # slow push-in while held
+                scale = 1.0 + 0.04 * (t - 0.32) / (length - 0.32)
+            alpha = 1.0 if t < length - 0.2 else max(0.0, (length - t) / 0.2)
+            w, h = max(2, int(block.width * scale)), max(2, int(block.height * scale))
+            layer = block.resize((w, h), Image.Resampling.LANCZOS)
+            if alpha < 1.0:
+                layer.putalpha(layer.getchannel("A").point(lambda a: int(a * alpha)))
+            canvas = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
+            canvas.paste(layer, ((video_width - w) // 2, center_y - h // 2), layer)
+            frame_path = output_dir / f"hook_{f:03d}.png"
+            canvas.save(frame_path, "PNG")
+            frames.append(frame_path)
+        return self._write_overlay_concat(output_dir / "hook_concat.txt", blank_png, frames, fps,
+                                          start=0.0, hold_last_until=length, total_duration=total_duration)
+
+    def create_comment_cta_overlay(self, output_dir: Path, start: float, total_duration: float,
+                                   options: Optional[List[str]] = None, video_width: int = 1080,
+                                   video_height: int = 1920) -> Path:
+        """
+        Comment prompt shown during the closing question: two answer pills ("PICK A SIDE")
+        or, without options, a plain "WHAT DO YOU THINK?". Comments move reach more than
+        likes, and TikTok down-ranks explicit "like this video" begging.
+        """
+        import math
+        output_dir.mkdir(parents=True, exist_ok=True)
+        fps = 15
+        blank_png = output_dir / "cta_blank.png"
+        Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0)).save(blank_png)
+
+        title_font, pill_font, small_font = self._impact_font(78), self._impact_font(66), self._impact_font(54)
+        opts = [o.upper().strip() for o in (options or []) if o and o.strip()][:2]
+
+        def render(pulse: float, appear: float) -> Image.Image:
+            canvas = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
+            d = ImageDraw.Draw(canvas)
+            a = int(255 * appear)
+            y = 1300
+            title = "PICK A SIDE" if len(opts) == 2 else "WHAT DO YOU THINK?"
+            tw = d.textlength(title, font=title_font)
+            d.text(((video_width - tw) / 2, y), title, font=title_font, fill=(255, 230, 0, a),
+                   stroke_width=7, stroke_fill=(0, 0, 0, a))
+            y += 110
+            if len(opts) == 2:
+                colours = [(37, 211, 102), (254, 44, 85)]
+                for i, (opt, col) in enumerate(zip(opts, colours)):
+                    lw = min(d.textlength(opt, font=pill_font), video_width - 260)
+                    grow = 1.0 + (0.05 * pulse if i == 0 else 0.05 * (1 - pulse))
+                    pw, ph = int((lw + 110) * grow), int(96 * grow)
+                    px = (video_width - pw) // 2
+                    d.rounded_rectangle([px, y, px + pw, y + ph], radius=ph // 2, fill=col + (min(a, 240),),
+                                        outline=(255, 255, 255, a), width=5)
+                    d.text(((video_width - d.textlength(opt, font=pill_font)) / 2, y + (ph - 76) / 2), opt,
+                           font=pill_font, fill=(255, 255, 255, a), stroke_width=4, stroke_fill=(0, 0, 0, a))
+                    y += ph + 22
+                    if i == 0:
+                        ow = d.textlength("OR", font=small_font)
+                        d.text(((video_width - ow) / 2, y - 12), "OR", font=small_font, fill=(255, 255, 255, a),
+                               stroke_width=5, stroke_fill=(0, 0, 0, a))
+                        y += 58
+            y += 18
+            label = "COMMENT BELOW"
+            lw = d.textlength(label, font=small_font)
+            lx = (video_width - lw - 70) / 2
+            d.text((lx, y), label, font=small_font, fill=(255, 255, 255, a), stroke_width=5, stroke_fill=(0, 0, 0, a))
+            ax, ay = lx + lw + 20, y + 14 + 8 * pulse       # bouncing down arrow
+            d.polygon([(ax, ay), (ax + 50, ay), (ax + 25, ay + 36)], fill=(255, 230, 0, a), outline=(0, 0, 0, a))
+            return canvas
+
+        frames = []
+        n = int(1.2 * fps)                    # fade/pop in, then a pulsing loop is baked into the hold
+        for f in range(n):
+            t = f / fps
+            appear = min(1.0, t / 0.3)
+            pulse = 0.5 + 0.5 * math.sin(t * 2 * math.pi * 1.5)
+            frame_path = output_dir / f"cta_{f:03d}.png"
+            render(pulse, appear).save(frame_path, "PNG")
+            frames.append(frame_path)
+        return self._write_overlay_concat(output_dir / "cta_concat.txt", blank_png, frames, fps,
+                                          start=max(0.0, start), hold_last_until=total_duration + 1.0,
+                                          total_duration=total_duration)
 
     def create_ambient_bgm(self, output_path: Path, duration: float = 30.0) -> Path:
         """Synthesizes high quality subtle cinematic drone audio."""

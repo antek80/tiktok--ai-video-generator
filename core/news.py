@@ -105,7 +105,8 @@ The audience is American: prefer US stories or global stories Americans care abo
 purely local UK/European items unless they are internationally famous.
 NEVER pick: stories centred on deaths, killings, disasters with victims, war casualties, terrorism,
 child abuse, suicide, or anything where outrage would mock victims. Also never pick stories about
-race or ethnic groups, genocide claims, religion, immigrants as a group, or conspiracy theories —
+race or ethnic groups, genocide claims, religion, immigrants as a group, conspiracy theories, or
+elections, voting and vote counting (TikTok strictly restricts election-integrity content) —
 outrage there turns into hate against people, not debate about a decision.
 Return JSON: {{"index": <number from the list>, "reason": "why people will argue about it"}}
 
@@ -128,6 +129,10 @@ HARD RULES:
    named in the article). Never a description.
 7. "caption": one provocative line (a true fact + question) ending with "Source: {source}".
    Hashtags are single words without spaces.
+8. "hook_text": 2-5 word ALL-CAPS shock line shown in the first second, TRUE per the article
+   (e.g. "CNN BANNED FROM AIR FORCE ONE").
+9. "cta_options": two opposite answers of max 3 words each to the closing question
+   (e.g. ["HIS PLANE, HIS RULES", "PRESS FREEDOM"]).
 
 Article ({source}): {title}
 {article}
@@ -141,7 +146,9 @@ Return JSON matching:
   "scenes": [{{"scene_id": 1, "visual_prompt": "short description", "narration": "sentence", "animation": "zoom_in", "image_query": "Wikipedia title"}}],
   "full_narration": "all narration joined",
   "caption": "caption ... Source: {source}",
-  "hashtags": ["#news", "#debate", "#fyp"]
+  "hashtags": ["#news", "#debate", "#fyp"],
+  "hook_text": "2-5 WORD SHOCK LINE",
+  "cta_options": ["ANSWER A", "ANSWER B"]
 }}"""
 
 VERIFY_PROMPT = """Fact-check the statements of a TikTok script against its source article.
@@ -208,6 +215,8 @@ def generate_news_script(used_urls: Set[str]) -> tuple:
 
         # The closing question is opinion by design — only factual statements are checked
         statements = [s.narration for s in script.scenes if not s.narration.strip().endswith("?")]
+        if script.hook_text:
+            statements.append(script.hook_text)
         verdict = _gemini_json(VERIFY_PROMPT.format(article=article, narration="\n".join(statements)))
         if verdict is None or not isinstance(verdict.get("unsupported"), list):
             logger.warning("Fact check returned no usable answer, not posting this story.")

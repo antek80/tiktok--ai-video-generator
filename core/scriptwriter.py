@@ -26,6 +26,10 @@ class VideoScript(BaseModel):
     full_narration: str
     caption: str
     hashtags: List[str]
+    # 2-5 word ALL-CAPS shock line flashed over the first seconds (the scroll-stopper)
+    hook_text: Optional[str] = None
+    # Two short opposite answers to the closing question, shown as comment prompts
+    cta_options: Optional[List[str]] = None
 
 class NoFreshStoryError(RuntimeError):
     """Raised when every available story has already been posted."""
@@ -512,7 +516,9 @@ CRITICAL RULES:
 4. Keep the total video between 28 and 35 seconds (around 4-5 scenes, about 85-105 words total).
 5. The last scene should ask a question or debate prompt to drive comments.
 6. For every scene set "image_query" to the EXACT title of an existing English Wikipedia article whose main photo fits that scene (a real person, place, object or the topic itself, e.g. "Robert Kirshner", "Boötes Void", "Dyson sphere"). Never a description; if unsure, use the topic's own article title.
-7. Hashtags are single words without spaces (e.g. "#spacemystery")."""
+7. Hashtags are single words without spaces (e.g. "#spacemystery").
+8. "hook_text": 2-5 word ALL-CAPS shock line for the first second on screen (e.g. "A HOLE WITH NO GALAXIES").
+9. "cta_options": two opposite answers of max 3 words each to the closing question (e.g. ["ALIENS", "NATURE"])."""
 
                 prompt = f"""Topic: {topic}
 Language: {lang_instruction}
@@ -534,7 +540,9 @@ Generate a viral, fact-packed JSON script matching this schema:
   ],
   "full_narration": "All scene narrations combined into one smooth story",
   "caption": "Viral caption with real fact teaser",
-  "hashtags": ["#topic", "#facts", "#mystery", "#fyp", "#viral"]
+  "hashtags": ["#topic", "#facts", "#mystery", "#fyp", "#viral"],
+  "hook_text": "2-5 WORD SHOCK LINE",
+  "cta_options": ["ANSWER A", "ANSWER B"]
 }}"""
 
                 candidate_models = [
