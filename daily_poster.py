@@ -176,9 +176,11 @@ async def run_daily_job():
     logger.info(f"Selected English topic for today's slot: '{topic}'")
 
     # 3. Generate High-Retention Video in English (60fps gameplay + photo cards + TikTok like outro)
+    voice = settings.pick_voice_en()
+    logger.info(f"Voice for this video: {voice}")
     pipeline = Pipeline()
     try:
-        result = pipeline.generate_video(topic=topic, language="en", voice=settings.default_voice_en)
+        result = pipeline.generate_video(topic=topic, language="en", voice=voice)
     except NoFreshStoryError as e:
         logger.error(f"⛔ {e} Skipping this slot.")
         return False
@@ -204,6 +206,7 @@ async def run_daily_job():
         "duration": result.duration,
         "caption": result.caption,
         "hashtags": result.hashtags,
+        "voice": voice,
         "published": success
     })
     save_posted_history(history)

@@ -1,4 +1,5 @@
 import os
+import random
 from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -20,8 +21,15 @@ class Settings(BaseModel):
     # Language & Voice Settings
     default_language: str = "en"
     default_voice: str = "en-US-BrianMultilingualNeural"  # Viral TikTok storytelling voice
-    default_voice_pl: str = "pl-PL-MarekNeural"
-    default_voice_en: str = "en-US-BrianMultilingualNeural"
+    default_voice_pl: str = Field(default_factory=lambda: os.getenv("DEFAULT_VOICE_PL", "pl-PL-MarekNeural"))
+    default_voice_en: str = Field(default_factory=lambda: os.getenv("DEFAULT_VOICE_EN", "en-US-BrianMultilingualNeural"))
+    # Comma-separated English voices to rotate between; empty = always default_voice_en
+    voices_en: str = Field(default_factory=lambda: os.getenv("VOICES_EN", ""))
+
+    def pick_voice_en(self) -> str:
+        """Random voice from VOICES_EN, so consecutive videos don't all sound the same."""
+        voices = [v.strip() for v in self.voices_en.split(",") if v.strip()]
+        return random.choice(voices) if voices else self.default_voice_en
     
     # Video Specifications
     video_width: int = 1080
