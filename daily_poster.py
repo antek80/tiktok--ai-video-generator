@@ -3,10 +3,11 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from config.settings import BASE_DIR, settings
 from core.pipeline import Pipeline
+from core.scriptwriter import NoFreshStoryError
 from agent.session_manager import SessionManager
 from agent.tiktok_uploader import TikTokUploader
 
@@ -97,10 +98,15 @@ def save_posted_history(history: List[dict]):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
-def get_next_topic() -> str:
-    """Picks next unposted topic or generates a fresh high-retention English topic via Gemini."""
+def get_next_topic() -> Optional[str]:
+    """Picks next unposted topic or generates a fresh high-retention English topic via Gemini.
+
+    Returns None when there is nothing fresh to post — posting a placeholder topic only
+    re-tells an old story, which TikTok treats as duplicate content.
+    """
     history = load_posted_history()
     used_topics = {entry.get("topic") for entry in history}
+    used_story_titles = [e.get("story_title") for e in history if e.get("story_title")]
 
     # 1. Check custom queue file
     if TOPICS_FILE.exists():
@@ -123,7 +129,7 @@ def get_next_topic() -> str:
         try:
             from google import genai
             client = genai.Client(api_key=settings.gemini_api_key)
-            prompt = f"Generate ONE short, viral, mind-blowing storytelling topic in English for TikTok (unexplained mysteries, deep ocean, cosmos, ancient secrets, psychology). Return ONLY the title. Do not repeat these: {list(used_topics)[-15:]}"
+            prompt = f"Generate ONE short, viral, mind-blowing storytelling topic in English for TikTok (unexplained mysteries, deep ocean, cosmos, ancient secrets, psychology). Return ONLY the title. Do not repeat any of these already covered stories: {sorted(set(used_story_titles))}"
             candidate_models = [
                 "gemini-3.7-flash",
                 "gemini-3.6-flash",
@@ -137,14 +143,50 @@ def get_next_topic() -> str:
                     res = client.models.generate_content(model=mod, contents=prompt)
                     if res and res.text:
                         new_topic = res.text.strip().strip('"').strip("'")
-                        if new_topic:
+                        if new_topic and new_topic not in used_topics:
                             return new_topic
                 except Exception:
                     continue
         except Exception as e:
             logger.warning(f"Error generating topic with Gemini: {e}")
 
-    return f"Untold Dark Mystery of History #{len(history) + 1}"
+    return None
+
+def prepare_video():
+    """
+    Picks a fresh topic according to CONTENT_MODE and renders the video (no upload).
+    Returns (topic, result, voice, source_url) or None when there is nothing fresh to post.
+    """
+    voice = settings.pick_voice_en()
+    logger.info(f"Voice for this video: {voice}")
+    pipeline = Pipeline()
+
+    if settings.content_mode == "news":
+        from core.news import generate_news_script
+        history = load_posted_history()
+        used_urls = {e.get("source_url") for e in history if e.get("source_url")}
+        try:
+            script, source_url = generate_news_script(used_urls)
+        except NoFreshStoryError as e:
+            logger.error(f"⛔ {e} Skipping this slot.")
+            return None
+        topic = script.topic
+        logger.info(f"Selected news story for this slot: '{topic}' ({source_url})")
+        result = pipeline.generate_video(topic=topic, language="en", voice=voice, custom_script=script)
+        return topic, result, voice, source_url
+
+    topic = get_next_topic()
+    if not topic:
+        logger.error("⛔ No fresh topic available (queue and pool used up, Gemini unavailable). "
+                     "Skipping this slot instead of re-posting an old story. Set GEMINI_API_KEY in .env.")
+        return None
+    logger.info(f"Selected English topic for today's slot: '{topic}'")
+    try:
+        result = pipeline.generate_video(topic=topic, language="en", voice=voice)
+    except NoFreshStoryError as e:
+        logger.error(f"⛔ {e} Skipping this slot.")
+        return None
+    return topic, result, voice, None
 
 async def run_daily_job():
     """Main execution function for 4x daily autonomous video generation and posting."""
@@ -161,13 +203,11 @@ async def run_daily_job():
             logger.error("❌ Login failed or was cancelled.")
             return False
 
-    # 2. Pick Unique English Topic
-    topic = get_next_topic()
-    logger.info(f"Selected English topic for today's slot: '{topic}'")
-
-    # 3. Generate High-Retention Video in English (60fps gameplay + photo cards + TikTok like outro)
-    pipeline = Pipeline()
-    result = pipeline.generate_video(topic=topic, language="en", voice=settings.default_voice_en)
+    # 2-3. Pick a fresh topic (evergreen story or current news) and render the video
+    prepared = prepare_video()
+    if not prepared:
+        return False
+    topic, result, voice, source_url = prepared
     logger.info(f"Video generated successfully: {result.video_path} (duration: {result.duration:.2f}s)")
 
     # 4. Publish to TikTok Studio
@@ -177,7 +217,7 @@ async def run_daily_job():
         caption=result.caption,
         hashtags=result.hashtags,
         publish_now=True,
-        declare_ai=False
+        declare_ai=settings.declare_ai_content
     )
 
     # 5. Log History
@@ -185,10 +225,13 @@ async def run_daily_job():
     history.append({
         "timestamp": datetime.now().isoformat(),
         "topic": topic,
+        "story_title": result.script.title,
         "video_path": str(result.video_path),
         "duration": result.duration,
         "caption": result.caption,
         "hashtags": result.hashtags,
+        "voice": voice,
+        "source_url": source_url,
         "published": success
     })
     save_posted_history(history)

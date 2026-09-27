@@ -1,4 +1,5 @@
 import os
+import random
 from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -20,8 +21,17 @@ class Settings(BaseModel):
     # Language & Voice Settings
     default_language: str = "en"
     default_voice: str = "en-US-BrianMultilingualNeural"  # Viral TikTok storytelling voice
-    default_voice_pl: str = "pl-PL-MarekNeural"
-    default_voice_en: str = "en-US-BrianMultilingualNeural"
+    default_voice_pl: str = Field(default_factory=lambda: os.getenv("DEFAULT_VOICE_PL", "pl-PL-MarekNeural"))
+    default_voice_en: str = Field(default_factory=lambda: os.getenv("DEFAULT_VOICE_EN", "en-US-BrianMultilingualNeural"))
+    # Comma-separated English voices to rotate between; empty = always default_voice_en
+    voices_en: str = Field(default_factory=lambda: os.getenv("VOICES_EN", ""))
+    # "stories" = evergreen mysteries, "news" = current headlines from RSS (core/news.py)
+    content_mode: str = Field(default_factory=lambda: os.getenv("CONTENT_MODE", "stories").strip().lower())
+
+    def pick_voice_en(self) -> str:
+        """Random voice from VOICES_EN, so consecutive videos don't all sound the same."""
+        voices = [v.strip() for v in self.voices_en.split(",") if v.strip()]
+        return random.choice(voices) if voices else self.default_voice_en
     
     # Video Specifications
     video_width: int = 1080
@@ -51,7 +61,7 @@ class Settings(BaseModel):
     tiktok_session_dir: Path = Path.home() / ".tiktok_automation_session"
     headless: bool = True
     simulate_human_delays: bool = True
-    declare_ai_content: bool = False  # Domyślnie wyłączone dla formatu storytelling / lektora
+    declare_ai_content: bool = Field(default_factory=lambda: os.getenv("DECLARE_AI_CONTENT", "false").strip().lower() in ("1", "true", "yes"))
 
     # Daily Schedule Settings (from .env)
     posts_per_day: int = Field(default_factory=lambda: int(os.getenv("POSTS_PER_DAY", "4")))

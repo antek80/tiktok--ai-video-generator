@@ -73,6 +73,53 @@ class VideoEngine:
             return random.choice(videos)
         return None
 
+    def build_photo_track(self, photos: List[tuple], work_dir: Path, height: int) -> Optional[Path]:
+        """
+        Renders the top half of a split-screen video: each (PIL image, seconds) gets its own
+        Ken Burns move (zoom in / zoom out / pan left / pan right, rotating) and they are cut
+        together hard. Short shots with constant motion keep viewers watching.
+        """
+        from PIL import Image, ImageOps
+        work_dir.mkdir(parents=True, exist_ok=True)
+        fps = self.fps
+        moves = [
+            ("1+0.14*on/{d}", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"),
+            ("1.14-0.14*on/{d}", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"),
+            ("1.15", "(iw-iw/zoom)*on/{d}", "ih/2-(ih/zoom/2)"),
+            ("1.15", "(iw-iw/zoom)*(1-on/{d})", "ih/2-(ih/zoom/2)"),
+        ]
+        clips = []
+        for i, (img, seconds) in enumerate(photos):
+            frames = max(2, int(round(seconds * fps)))
+            # 2x oversampling keeps zoompan motion smooth instead of jittery
+            src = ImageOps.fit(img.convert("RGB"), (self.width * 2, height * 2), method=Image.Resampling.LANCZOS)
+            src_path = work_dir / f"photo_{i:02d}.jpg"
+            src.save(src_path, "JPEG", quality=92)
+            z, x, y = (e.format(d=frames) for e in moves[i % len(moves)])
+            clip = work_dir / f"shot_{i:02d}.mp4"
+            cmd = [
+                "ffmpeg", "-y", "-loglevel", "error", "-i", str(src_path),
+                "-vf", f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={self.width}x{height}:fps={fps},format=yuv420p",
+                "-frames:v", str(frames), "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-r", str(fps), str(clip)
+            ]
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode != 0:
+                logger.warning(f"Ken Burns shot {i} failed: {result.stderr.decode('utf-8')[-300:]}")
+                continue
+            clips.append(clip)
+        if not clips:
+            return None
+        concat_txt = work_dir / "shots.txt"
+        concat_txt.write_text("".join(f"file '{c.resolve()}'\n" for c in clips), encoding="utf-8")
+        track = work_dir / "photo_track.mp4"
+        result = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+                                 "-i", str(concat_txt), "-c", "copy", str(track)],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            logger.warning(f"Photo track concat failed: {result.stderr.decode('utf-8')[-300:]}")
+            return None
+        return track
+
     def assemble_final_video(
         self,
         segment_paths: List[Path],
@@ -83,7 +130,9 @@ class VideoEngine:
         cards_concat_path: Optional[Path] = None,
         outro_concat_path: Optional[Path] = None,
         whoosh_sfx_path: Optional[Path] = None,
-        duration: Optional[float] = None
+        duration: Optional[float] = None,
+        photo_track_path: Optional[Path] = None,
+        hook_concat_path: Optional[Path] = None
     ) -> Path:
         """
         Assembles full video with background gameplay, floating entity photo cards,
@@ -112,37 +161,49 @@ class VideoEngine:
             max_offset = max(0.0, bg_dur - needed_dur - 2.0)
             start_offset = random.uniform(0.0, max_offset) if max_offset > 0 else 0.0
             
-            # Quad-layer Composition: [0] Background + [1] Cards + [2] Outro Heart + [3] Subtitles
-            if settings.apply_film_grain:
-                v_base = f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height},noise=alls={settings.grain_intensity}:allf=t+u[vbase];"
-            else:
-                v_base = f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height}[vbase];"
+            inputs = ["-ss", f"{start_offset:.2f}", "-stream_loop", "-1", "-i", str(gameplay_bg)]
+            idx = 1
+            grain = f",noise=alls={settings.grain_intensity}:allf=t+u" if settings.apply_film_grain else ""
 
-            vf_filter = (
-                f"{v_base}"
-                f"[vbase][1:v]overlay=0:0:shortest=1[vcards];"
-                f"[vcards][2:v]overlay=0:0:shortest=1[voutro];"
-                f"[voutro][3:v]overlay=0:0:shortest=1[vout]"
-            )
-            af_filter = "[4:a]volume=1.0[voice];[5:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            if photo_track_path and photo_track_path.exists():
+                # Split screen: big moving photos on top, gameplay on the bottom half
+                half = self.height // 2
+                inputs += ["-i", str(photo_track_path)]
+                filters = [
+                    f"[0:v]scale={self.width}:{half}:force_original_aspect_ratio=increase,crop={self.width}:{half},setsar=1[gbot]",
+                    f"[{idx}:v]scale={self.width}:{half},setsar=1,tpad=stop_mode=clone:stop_duration=60[ptop]",
+                    f"[ptop][gbot]vstack=inputs=2{grain}[v0]",
+                ]
+                idx += 1
+                overlays = [outro_concat_path, hook_concat_path, subtitles_concat_path]
+            else:
+                filters = [f"[0:v]scale={self.width}:{self.height}:force_original_aspect_ratio=increase,crop={self.width}:{self.height}{grain}[v0]"]
+                overlays = [cards_concat_path, outro_concat_path, hook_concat_path, subtitles_concat_path]
+
+            last = "v0"
+            for n, ov in enumerate(p for p in overlays if p):
+                inputs += ["-f", "concat", "-safe", "0", "-i", str(ov)]
+                filters.append(f"[{last}][{idx}:v]overlay=0:0:shortest=1[v{n + 1}]")
+                last = f"v{n + 1}"
+                idx += 1
+
+            inputs += ["-i", str(voice_audio_path), "-i", str(bgm_audio_path)]
+            voice_i, bgm_i = idx, idx + 1
+            idx += 2
+            audio = f"[{voice_i}:a]volume=1.0[voice];[{bgm_i}:a]volume=0.08[bgm]"
+            mix = "[voice][bgm]"
+            if whoosh_sfx_path and whoosh_sfx_path.exists():
+                # Impact whoosh on the opening hook
+                inputs += ["-i", str(whoosh_sfx_path)]
+                audio += f";[{idx}:a]volume=0.7[sfx]"
+                mix += "[sfx]"
+                idx += 1
+            n_audio = mix.count("[")
+            audio += f";{mix}amix=inputs={n_audio}:duration=first:dropout_transition=2:normalize=0[aout]"
 
             cmd = [
-                "ffmpeg", "-y",
-                "-ss", f"{start_offset:.2f}",
-                "-stream_loop", "-1",
-                "-i", str(gameplay_bg),
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(cards_concat_path),
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(outro_concat_path),
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(subtitles_concat_path),
-                "-i", str(voice_audio_path),
-                "-i", str(bgm_audio_path),
-                "-filter_complex", f"{vf_filter};{af_filter}",
+                "ffmpeg", "-y", *inputs,
+                "-filter_complex", ";".join(filters) + f";[{last}]null[vout];{audio}",
                 "-map", "[vout]",
                 "-map", "[aout]",
                 "-c:v", "libx264",

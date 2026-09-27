@@ -14,6 +14,8 @@ class Scene(BaseModel):
     visual_prompt: str
     narration: str
     animation: str = "zoom_in"
+    # Exact English Wikipedia article title whose photo illustrates this scene (set by Gemini)
+    image_query: Optional[str] = None
 
 class VideoScript(BaseModel):
     title: str
@@ -24,6 +26,13 @@ class VideoScript(BaseModel):
     full_narration: str
     caption: str
     hashtags: List[str]
+    # 2-5 word ALL-CAPS shock line flashed over the first seconds (the scroll-stopper)
+    hook_text: Optional[str] = None
+    # Two short opposite answers to the closing question, shown as comment prompts
+    cta_options: Optional[List[str]] = None
+
+class NoFreshStoryError(RuntimeError):
+    """Raised when every available story has already been posted."""
 
 # ==============================================================================
 # Complete, 100% Unique Curated Factual Library for All 50+ Topics
@@ -484,7 +493,13 @@ class ScriptWriter:
             pass
         return None
 
-    def generate_script(self, topic: str, language: str = "en", style: str = "curiosity") -> VideoScript:
+    def generate_script(
+        self,
+        topic: str,
+        language: str = "en",
+        style: str = "curiosity",
+        used_story_titles: Optional[set] = None
+    ) -> VideoScript:
         """Generates a fact-rich, high-retention script with concrete storytelling details (30s format)."""
         # 1. Check if Gemini API is available and valid
         if self.api_key and self.api_key != "your_gemini_api_key_here" and len(self.api_key) > 10:
@@ -499,7 +514,11 @@ CRITICAL RULES:
 2. DO NOT write vague filler like "Scientists found a clue" or "This will change your perspective". Tell the ACTUAL FACTS of what happened!
 3. The hook in scene 1 must immediately hit the viewer with the craziest real fact in 1 punchy sentence.
 4. Keep the total video between 28 and 35 seconds (around 4-5 scenes, about 85-105 words total).
-5. The last scene should ask a question or debate prompt to drive comments."""
+5. The last scene should ask a question or debate prompt to drive comments.
+6. For every scene set "image_query" to the EXACT title of an existing English Wikipedia article whose main photo fits that scene (a real person, place, object or the topic itself, e.g. "Robert Kirshner", "Boötes Void", "Dyson sphere"). Never a description; if unsure, use the topic's own article title.
+7. Hashtags are single words without spaces (e.g. "#spacemystery").
+8. "hook_text": 2-5 word ALL-CAPS shock line for the first second on screen (e.g. "A HOLE WITH NO GALAXIES").
+9. "cta_options": two opposite answers of max 3 words each to the closing question (e.g. ["ALIENS", "NATURE"])."""
 
                 prompt = f"""Topic: {topic}
 Language: {lang_instruction}
@@ -515,12 +534,15 @@ Generate a viral, fact-packed JSON script matching this schema:
       "scene_id": 1,
       "visual_prompt": "Cinematic 9:16 vertical description",
       "narration": "First factual sentence spoken here.",
-      "animation": "zoom_in"
+      "animation": "zoom_in",
+      "image_query": "Exact English Wikipedia article title"
     }}
   ],
   "full_narration": "All scene narrations combined into one smooth story",
   "caption": "Viral caption with real fact teaser",
-  "hashtags": ["#topic", "#facts", "#mystery", "#fyp", "#viral"]
+  "hashtags": ["#topic", "#facts", "#mystery", "#fyp", "#viral"],
+  "hook_text": "2-5 WORD SHOCK LINE",
+  "cta_options": ["ANSWER A", "ANSWER B"]
 }}"""
 
                 candidate_models = [
@@ -617,6 +639,10 @@ Generate a viral, fact-packed JSON script matching this schema:
                     best_score = score
                     best_match_key = key
 
+        if best_match_key and VIRAL_FACTUAL_STORIES.get(best_match_key, {}).get("title") in (used_story_titles or set()):
+            logger.info(f"Curated story '{best_match_key}' was already posted; not re-telling it.")
+            best_match_key = None
+
         if best_match_key and best_match_key in VIRAL_FACTUAL_STORIES:
             story = VIRAL_FACTUAL_STORIES[best_match_key]
             logger.info(f"Using curated factual storytelling script for '{best_match_key}'")
@@ -666,18 +692,30 @@ Generate a viral, fact-packed JSON script matching this schema:
                 )
 
         # 4. Safe Distinct Dynamic Fallback
-        random_story = random.choice(list(VIRAL_FACTUAL_STORIES.values()))
+        # Exclude already-posted stories so this doesn't silently re-tell one under a
+        # different (often placeholder) topic label.
+        used_story_titles = used_story_titles or set()
+        unused_stories = [s for s in VIRAL_FACTUAL_STORIES.values() if s["title"] not in used_story_titles]
+        if not unused_stories:
+            # Re-posting the same narration word-for-word is duplicate content to TikTok
+            # and gets the whole account suppressed, so refuse instead of reusing the pool.
+            raise NoFreshStoryError(
+                "All curated stories have already been posted. Set GEMINI_API_KEY in .env "
+                "or add new stories — refusing to re-post duplicate content."
+            )
+        random_story = random.choice(unused_stories)
+        subject = random_story["title"]
         scenes = [
-            Scene(scene_id=i+1, visual_prompt=f"Cinematic 9:16 {topic}", narration=s, animation="zoom_in")
+            Scene(scene_id=i+1, visual_prompt=f"Cinematic 9:16 vertical shot showing {subject}", narration=s, animation="zoom_in")
             for i, s in enumerate(random_story["sentences"])
         ]
         return VideoScript(
-            title=f"The Mystery of {topic}",
+            title=subject,
             topic=topic,
             target_audience="Mystery seekers",
             hook=random_story["hook"],
             scenes=scenes,
             full_narration=" ".join(random_story["sentences"]),
-            caption=f"Unbelievable facts about {topic} 🤯 What do you think? #facts #mystery #fyp #viral",
-            hashtags=["#facts", "#mystery", "#mindblowing", "#fyp", "#viral"]
+            caption=random_story["caption"],
+            hashtags=random_story["hashtags"]
         )
