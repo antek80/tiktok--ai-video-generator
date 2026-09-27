@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import re
 import urllib.request
 import urllib.parse
 from pathlib import Path
@@ -10,17 +11,26 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Specific high-quality verified historical entity images for viral topics
-KNOWN_TOPIC_IMAGES = {
-    "dyatlov": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Dyatlov_pass_tent.jpg/800px-Dyatlov_pass_tent.jpg",
-    "mary celeste": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/Mary_Celeste_as_Amazon_in_1861_%28cropped%29.jpg/800px-Mary_Celeste_as_Amazon_in_1861_%28cropped%29.jpg",
-    "eldridge": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/USS_Eldridge_%28DE-173%29_underway%2C_circa_in_1944.jpg/800px-USS_Eldridge_%28DE-173%29_underway%2C_circa_in_1944.jpg",
-    "philadelphia experiment": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/USS_Eldridge_%28DE-173%29_underway%2C_circa_in_1944.jpg/800px-USS_Eldridge_%28DE-173%29_underway%2C_circa_in_1944.jpg",
-    "terracotta": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Terracotta_Army%2C_View_of_Pit_1.jpg/800px-Terracotta_Army%2C_View_of_Pit_1.jpg",
-    "china": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Terracotta_Army%2C_View_of_Pit_1.jpg/800px-Terracotta_Army%2C_View_of_Pit_1.jpg",
-    "antarctica": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Antarctica_6400px_from_Blue_Marble.jpg/800px-Antarctica_6400px_from_Blue_Marble.jpg",
-    "vostok": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Antarctica_6400px_from_Blue_Marble.jpg/800px-Antarctica_6400px_from_Blue_Marble.jpg",
-    "wow": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Wow_signal.jpg/800px-Wow_signal.jpg"
+_STOPWORDS = {
+    "the", "in", "on", "at", "a", "an", "of", "to", "for", "and", "but", "or",
+    "is", "are", "was", "were", "this", "that", "it", "its", "as", "by", "with",
+    "from", "their", "his", "her", "over", "into", "after", "before", "when",
+    "while", "than", "then", "some", "even", "still", "yet", "if", "so"
+}
+
+# Verified Wikipedia article titles for high-confidence viral topics.
+# Resolved to a live thumbnail via the REST summary API at fetch time, since
+# hardcoded Wikimedia thumbnail URLs go stale when their allowed sizes change.
+KNOWN_TOPIC_PAGES = {
+    "dyatlov": "Dyatlov Pass incident",
+    "mary celeste": "Mary Celeste",
+    "eldridge": "USS Eldridge",
+    "philadelphia experiment": "Philadelphia Experiment",
+    "terracotta": "Terracotta Army",
+    "china": "Terracotta Army",
+    "antarctica": "Lake Vostok",
+    "vostok": "Lake Vostok",
+    "wow": "Wow! signal"
 }
 
 class AssetManager:
@@ -41,6 +51,70 @@ class AssetManager:
         except Exception:
             return False
 
+    def _fetch_wikipedia_page_thumbnail(self, page_title: str) -> Optional[Image.Image]:
+        """Resolves a known Wikipedia page title to its current thumbnail via the REST summary API."""
+        try:
+            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(page_title)}"
+            req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                img_url = data.get("thumbnail", {}).get("source")
+                if not img_url:
+                    return None
+                img_req = urllib.request.Request(img_url, headers={"User-Agent": "TikTokStoryBot/2.0"})
+                with urllib.request.urlopen(img_req, timeout=4) as img_resp:
+                    img = Image.open(io.BytesIO(img_resp.read())).convert("RGBA")
+                    if self._is_image_valid_and_visual(img):
+                        return img
+        except Exception as e:
+            logger.debug(f"Known-topic thumbnail fetch failed for '{page_title}': {e}")
+        return None
+
+    def _extract_entity_phrases(self, text: str) -> List[str]:
+        """
+        Pulls likely proper-noun phrases (e.g. "USS Eldridge", "Philadelphia") out of a
+        single narration sentence, longest/most-specific first, so a photo search can be
+        matched to what is actually said in that moment instead of the video's topic.
+        """
+        if not text:
+            return []
+        words = re.findall(r"[A-Za-z0-9'\-]+", text)
+        phrases: List[str] = []
+        current: List[str] = []
+        for w in words:
+            if w[0].isupper() and w.lower() not in _STOPWORDS:
+                current.append(w)
+            else:
+                if current:
+                    phrases.append(" ".join(current))
+                    current = []
+        if current:
+            phrases.append(" ".join(current))
+        phrases = [p for p in phrases if len(p) > 3]
+        phrases.sort(key=len, reverse=True)
+        return phrases
+
+    def fetch_scene_matched_image(self, narration: str) -> Optional[Image.Image]:
+        """
+        Tries to find a real photo matching the SPECIFIC entity/moment mentioned in one
+        scene's narration (e.g. "USS Eldridge" for a Philadelphia Experiment scene about
+        the ship), rather than a generic topic-wide photo. Returns None if nothing in the
+        sentence resolves to a real, verifiable photo.
+        """
+        for phrase in self._extract_entity_phrases(narration)[:3]:
+            img = self.fetch_real_entity_image(phrase)
+            if img:
+                return img
+        return None
+
+    def _resolve_known_page_title(self, query: str) -> Optional[str]:
+        """Maps a free-text query onto a verified Wikipedia article title, if recognized."""
+        q_lower = query.lower()
+        for k, page_title in KNOWN_TOPIC_PAGES.items():
+            if k in q_lower:
+                return page_title
+        return None
+
     def fetch_real_entity_image(self, query: str) -> Optional[Image.Image]:
         """
         Attempts to search and download a real authentic photo from verified links or Wikipedia.
@@ -50,58 +124,143 @@ class AssetManager:
             return None
 
         # Check known verified topics
-        q_lower = query.lower()
-        for k, url in KNOWN_TOPIC_IMAGES.items():
-            if k in q_lower:
-                try:
-                    req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
-                    with urllib.request.urlopen(req, timeout=4) as img_resp:
-                        img = Image.open(io.BytesIO(img_resp.read())).convert("RGBA")
-                        if self._is_image_valid_and_visual(img):
-                            return img
-                except Exception:
-                    pass
+        known_title = self._resolve_known_page_title(query)
+        if known_title:
+            img = self._fetch_wikipedia_page_thumbnail(known_title)
+            if img:
+                return img
 
-        # Wikipedia Search fallback
+        # Wikipedia full-text search fallback (finds the best-matching page instead of
+        # requiring the query to be an exact article title).
         clean_query = query.replace("photo of ", "").replace("picture of ", "").replace("The ", "").strip()
-        search_terms = [clean_query]
+        if not clean_query:
+            return None
 
-        for term in search_terms:
-            try:
-                url = f"https://en.wikipedia.org/w/api.php?action=query&titles={urllib.parse.quote(term)}&prop=pageimages&format=json&pithumbsize=800"
-                req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
-                with urllib.request.urlopen(req, timeout=3) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    pages = data.get("query", {}).get("pages", {})
-                    for page_id, page_info in pages.items():
-                        if "thumbnail" in page_info:
-                            img_url = page_info["thumbnail"]["source"]
-                            # Ignore audio spectrograms / SVG charts
-                            if "bloop.jpg" in img_url.lower() or ".svg" in img_url.lower():
-                                continue
-                            img_req = urllib.request.Request(img_url, headers={"User-Agent": "TikTokStoryBot/2.0"})
-                            with urllib.request.urlopen(img_req, timeout=4) as img_resp:
-                                img = Image.open(io.BytesIO(img_resp.read())).convert("RGBA")
-                                if self._is_image_valid_and_visual(img):
-                                    return img
-            except Exception as e:
-                logger.debug(f"Image search failed for '{term}': {e}")
+        try:
+            url = (
+                "https://en.wikipedia.org/w/api.php?action=query&generator=search"
+                f"&gsrsearch={urllib.parse.quote(clean_query)}&gsrlimit=1"
+                "&prop=pageimages&piprop=thumbnail&pithumbsize=800&format=json"
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                pages = data.get("query", {}).get("pages", {})
+                for page_id, page_info in pages.items():
+                    if "thumbnail" in page_info:
+                        img_url = page_info["thumbnail"]["source"]
+                        # Ignore audio spectrograms / SVG charts
+                        if "bloop.jpg" in img_url.lower() or ".svg" in img_url.lower():
+                            continue
+                        img_req = urllib.request.Request(img_url, headers={"User-Agent": "TikTokStoryBot/2.0"})
+                        with urllib.request.urlopen(img_req, timeout=4) as img_resp:
+                            img = Image.open(io.BytesIO(img_resp.read())).convert("RGBA")
+                            if self._is_image_valid_and_visual(img):
+                                return img
+        except Exception as e:
+            logger.debug(f"Image search failed for '{clean_query}': {e}")
 
         return None
+
+    def _download_commons_candidate(self, img_url: str) -> Optional[Image.Image]:
+        """Downloads and validates one Commons file URL. Rejects SVG renders (maps/diagrams)."""
+        if not img_url or ".svg" in img_url.lower():
+            return None
+        try:
+            req = urllib.request.Request(img_url, headers={"User-Agent": "TikTokStoryBot/2.0"})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                img = Image.open(io.BytesIO(resp.read())).convert("RGBA")
+                if self._is_image_valid_and_visual(img):
+                    return img
+        except Exception:
+            pass
+        return None
+
+    def fetch_entity_image_pool(self, query: str, count: int = 4) -> List[Image.Image]:
+        """
+        Fetches up to `count` DISTINCT real photos related to the topic from Wikimedia
+        Commons, so different scenes in the same video can each show a different image
+        instead of the single Wikipedia infobox thumbnail repeated on every card.
+        """
+        images: List[Image.Image] = []
+        if not query or len(query.strip()) < 3:
+            return images
+
+        # Prefer the verified article title when recognized — raw marketing titles
+        # (e.g. "The Dyatlov Pass Mystery") often contain words absent from any real
+        # Commons file/description, which silently zeroes out the search results.
+        known_title = self._resolve_known_page_title(query)
+        clean_query = known_title or \
+            query.replace("photo of ", "").replace("picture of ", "").replace("The ", "").strip()
+
+        candidate_urls: List[str] = []
+
+        # 1. Full-text search across Commons file names/descriptions.
+        try:
+            url = (
+                "https://commons.wikimedia.org/w/api.php?action=query&generator=search"
+                f"&gsrsearch={urllib.parse.quote(clean_query)}&gsrnamespace=6&gsrlimit=15"
+                "&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json"
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for page_info in data.get("query", {}).get("pages", {}).values():
+                    infos = page_info.get("imageinfo") or []
+                    if infos:
+                        img_url = infos[0].get("thumburl") or infos[0].get("url")
+                        if img_url:
+                            candidate_urls.append(img_url)
+        except Exception as e:
+            logger.debug(f"Commons search failed for '{clean_query}': {e}")
+
+        # 2. Matching Commons category listing — catches real photos that full-text
+        # search misses (e.g. non-English file names), when a category of that exact
+        # name exists for the topic.
+        try:
+            cat_title = urllib.parse.quote(f"Category:{clean_query}")
+            url = (
+                "https://commons.wikimedia.org/w/api.php?action=query&generator=categorymembers"
+                f"&gcmtitle={cat_title}&gcmtype=file&gcmlimit=25"
+                "&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json"
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": "TikTokStoryBot/2.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for page_info in data.get("query", {}).get("pages", {}).values():
+                    infos = page_info.get("imageinfo") or []
+                    if infos:
+                        img_url = infos[0].get("thumburl") or infos[0].get("url")
+                        if img_url and img_url not in candidate_urls:
+                            candidate_urls.append(img_url)
+        except Exception as e:
+            logger.debug(f"Commons category listing failed for '{clean_query}': {e}")
+
+        for img_url in candidate_urls:
+            if len(images) >= count:
+                break
+            img = self._download_commons_candidate(img_url)
+            if img:
+                images.append(img)
+
+        return images
 
     def create_floating_card_overlay(
         self,
         query: str,
         output_path: Path,
         video_width: int = 1080,
-        video_height: int = 1920
+        video_height: int = 1920,
+        raw_image: Optional[Image.Image] = None
     ) -> Optional[Path]:
         """
         Creates a sleek compact 1080x1920 transparent PNG with a floating card overlay
         only when an authentic photo is found. Returns None if no quality image is available.
+        Pass `raw_image` to use an already-fetched photo (e.g. from fetch_entity_image_pool)
+        instead of searching again.
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        raw_image = self.fetch_real_entity_image(query)
+        raw_image = raw_image or self.fetch_real_entity_image(query)
         if not raw_image:
             return None
 

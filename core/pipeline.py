@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from PIL import Image
-from config.settings import settings, OUTPUT_DIR, TEMP_DIR
+from config.settings import settings, BASE_DIR, OUTPUT_DIR, TEMP_DIR
 from core.scriptwriter import ScriptWriter, VideoScript
 from core.voice_engine import VoiceEngine
 from core.subtitle_engine import SubtitleEngine
@@ -53,6 +53,27 @@ class Pipeline:
         self.asset_manager = AssetManager(api_key=gemini_api_key)
         self.video_engine = VideoEngine()
 
+    def _load_used_story_titles(self) -> set:
+        """
+        Story titles already posted, so a fresh generation can avoid picking one that was
+        already told — even if it's being posted this time under a different topic label
+        (e.g. a placeholder "Untold Dark Mystery of History #N" title).
+        """
+        history_file = BASE_DIR / "posted_history.json"
+        if not history_file.exists():
+            return set()
+        try:
+            with open(history_file, "r", encoding="utf-8") as f:
+                past_posts = json.load(f)
+            return {
+                p.get("story_title") or p.get("topic")
+                for p in past_posts
+                if p.get("published", False) and (p.get("story_title") or p.get("topic"))
+            }
+        except Exception as e:
+            logger.debug(f"Could not load posting history for dedup: {e}")
+            return set()
+
     def generate_video(
         self,
         topic: str,
@@ -75,23 +96,10 @@ class Pipeline:
             script = custom_script
         else:
             logger.info("Step 1: Generating high-retention viral script...")
-            script = self.scriptwriter.generate_script(topic=topic, language=language)
-
-        # Anti-Duplication Guard: Verify narration uniqueness against history
-        history_file = Path("posted_history.json")
-        if history_file.exists():
-            try:
-                with open(history_file, "r", encoding="utf-8") as f:
-                    past_posts = json.load(f)
-                
-                curr_words = set(script.full_narration.lower().split())
-                for past in past_posts:
-                    past_caption = past.get("caption", "").lower()
-                    # Check if audio narration or topic overlaps too heavily
-                    if past.get("topic") == topic and past.get("published", False):
-                        logger.warning(f"Topic '{topic}' was already published! Re-generating with fresh angle...")
-            except Exception as e:
-                logger.debug(f"History check skipped: {e}")
+            used_story_titles = self._load_used_story_titles()
+            script = self.scriptwriter.generate_script(
+                topic=topic, language=language, used_story_titles=used_story_titles
+            )
 
         with open(project_dir / "script.json", "w", encoding="utf-8") as f:
             json.dump(script.model_dump(), f, ensure_ascii=False, indent=2)
@@ -124,23 +132,37 @@ class Pipeline:
 
         num_scenes = len(script.scenes)
         base_scene_duration = total_duration / max(1, num_scenes)
-        
+
+        # Fetch a pool of DISTINCT real photos up front so each scene can show a
+        # different image instead of the same one repeated on every card.
+        image_pool = self.asset_manager.fetch_entity_image_pool(script.title, count=num_scenes)
+        if not image_pool:
+            single = self.asset_manager.fetch_real_entity_image(script.title)
+            if single:
+                image_pool = [single]
+
         card_entries = []
         current_time = 0.0
 
         for i, scene in enumerate(script.scenes):
             seg_duration = max(1.0, total_duration - current_time) if i == num_scenes - 1 else base_scene_duration
             card_path = cards_dir / f"card_{scene.scene_id}.png"
-            
+
             entity_query = scene.visual_prompt.replace("Cinematic vertical shot", "").replace("9:16", "").strip()
             if i == 0:
-                entity_query = topic
-                
+                entity_query = script.title
+
+            # Prefer a photo matched to what THIS scene actually narrates (e.g. "USS
+            # Eldridge" for a sentence about the ship) over a generic topic-wide photo.
+            raw_img = self.asset_manager.fetch_scene_matched_image(scene.narration)
+            if not raw_img:
+                raw_img = image_pool[i] if i < len(image_pool) else (image_pool[-1] if image_pool else None)
             generated_overlay = self.asset_manager.create_floating_card_overlay(
                 query=entity_query,
                 output_path=card_path,
                 video_width=settings.video_width,
-                video_height=settings.video_height
+                video_height=settings.video_height,
+                raw_image=raw_img
             )
 
             used_img = card_path if (generated_overlay and generated_overlay.exists()) else blank_card
