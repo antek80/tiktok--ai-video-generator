@@ -152,6 +152,42 @@ def get_next_topic() -> Optional[str]:
 
     return None
 
+def prepare_video():
+    """
+    Picks a fresh topic according to CONTENT_MODE and renders the video (no upload).
+    Returns (topic, result, voice, source_url) or None when there is nothing fresh to post.
+    """
+    voice = settings.pick_voice_en()
+    logger.info(f"Voice for this video: {voice}")
+    pipeline = Pipeline()
+
+    if settings.content_mode == "news":
+        from core.news import generate_news_script
+        history = load_posted_history()
+        used_urls = {e.get("source_url") for e in history if e.get("source_url")}
+        try:
+            script, source_url = generate_news_script(used_urls)
+        except NoFreshStoryError as e:
+            logger.error(f"⛔ {e} Skipping this slot.")
+            return None
+        topic = script.topic
+        logger.info(f"Selected news story for this slot: '{topic}' ({source_url})")
+        result = pipeline.generate_video(topic=topic, language="en", voice=voice, custom_script=script)
+        return topic, result, voice, source_url
+
+    topic = get_next_topic()
+    if not topic:
+        logger.error("⛔ No fresh topic available (queue and pool used up, Gemini unavailable). "
+                     "Skipping this slot instead of re-posting an old story. Set GEMINI_API_KEY in .env.")
+        return None
+    logger.info(f"Selected English topic for today's slot: '{topic}'")
+    try:
+        result = pipeline.generate_video(topic=topic, language="en", voice=voice)
+    except NoFreshStoryError as e:
+        logger.error(f"⛔ {e} Skipping this slot.")
+        return None
+    return topic, result, voice, None
+
 async def run_daily_job():
     """Main execution function for 4x daily autonomous video generation and posting."""
     logger.info("=== 🤖 Starting TikTok Autonomous 4x Daily Agent ===")
@@ -167,23 +203,11 @@ async def run_daily_job():
             logger.error("❌ Login failed or was cancelled.")
             return False
 
-    # 2. Pick Unique English Topic
-    topic = get_next_topic()
-    if not topic:
-        logger.error("⛔ No fresh topic available (queue and pool used up, Gemini unavailable). "
-                     "Skipping this slot instead of re-posting an old story. Set GEMINI_API_KEY in .env.")
+    # 2-3. Pick a fresh topic (evergreen story or current news) and render the video
+    prepared = prepare_video()
+    if not prepared:
         return False
-    logger.info(f"Selected English topic for today's slot: '{topic}'")
-
-    # 3. Generate High-Retention Video in English (60fps gameplay + photo cards + TikTok like outro)
-    voice = settings.pick_voice_en()
-    logger.info(f"Voice for this video: {voice}")
-    pipeline = Pipeline()
-    try:
-        result = pipeline.generate_video(topic=topic, language="en", voice=voice)
-    except NoFreshStoryError as e:
-        logger.error(f"⛔ {e} Skipping this slot.")
-        return False
+    topic, result, voice, source_url = prepared
     logger.info(f"Video generated successfully: {result.video_path} (duration: {result.duration:.2f}s)")
 
     # 4. Publish to TikTok Studio
@@ -207,6 +231,7 @@ async def run_daily_job():
         "caption": result.caption,
         "hashtags": result.hashtags,
         "voice": voice,
+        "source_url": source_url,
         "published": success
     })
     save_posted_history(history)

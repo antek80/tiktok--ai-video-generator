@@ -25,6 +25,8 @@ class Settings(BaseModel):
     default_voice_en: str = Field(default_factory=lambda: os.getenv("DEFAULT_VOICE_EN", "en-US-BrianMultilingualNeural"))
     # Comma-separated English voices to rotate between; empty = always default_voice_en
     voices_en: str = Field(default_factory=lambda: os.getenv("VOICES_EN", ""))
+    # "stories" = evergreen mysteries, "news" = current headlines from RSS (core/news.py)
+    content_mode: str = Field(default_factory=lambda: os.getenv("CONTENT_MODE", "stories").strip().lower())
 
     def pick_voice_en(self) -> str:
         """Random voice from VOICES_EN, so consecutive videos don't all sound the same."""
