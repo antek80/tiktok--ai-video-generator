@@ -10,7 +10,7 @@ PLIST_PATH="$HOME/Library/LaunchAgents/com.tiktok.autoposter.plist"
 SCRIPT_RUNNER="$PROJECT_DIR/run_cron.sh"
 
 echo "=========================================================="
-echo " ⚙️ Configuring TikTok 10x Daily Auto-Poster Daemon"
+echo " ⚙️ Configuring TikTok Auto-Poster Daemon (slots from .env)"
 echo "=========================================================="
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -42,6 +42,7 @@ print(xml.rstrip())
     <string>com.tiktok.autoposter</string>
     <key>ProgramArguments</key>
     <array>
+        <string>/bin/bash</string>
         <string>$SCRIPT_RUNNER</string>
     </array>
     <key>StartCalendarInterval</key>
@@ -65,7 +66,8 @@ EOF
     launchctl load "$PLIST_PATH"
 
     echo "✅ Successfully installed and loaded LaunchAgent: $PLIST_PATH"
-    echo "📅 Scheduled 10 daily publication slots: 08:30, 10:00, 11:30, 13:00, 14:30, 16:00, 17:30, 19:00, 20:30, 22:00"
+    echo "📅 Scheduled daily publication slots:"
+    $PYTHON_EXEC -c "from config.settings import settings; print('\\n'.join('   ' + s for s in settings.get_schedule_slots()))"
     echo "💡 To unload/stop the background daemon: launchctl unload $PLIST_PATH"
 
 else

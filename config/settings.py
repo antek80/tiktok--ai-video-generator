@@ -51,7 +51,7 @@ class Settings(BaseModel):
     tiktok_session_dir: Path = Path.home() / ".tiktok_automation_session"
     headless: bool = True
     simulate_human_delays: bool = True
-    declare_ai_content: bool = False  # Domyślnie wyłączone dla formatu storytelling / lektora
+    declare_ai_content: bool = Field(default_factory=lambda: os.getenv("DECLARE_AI_CONTENT", "false").strip().lower() in ("1", "true", "yes"))
 
     # Daily Schedule Settings (from .env)
     posts_per_day: int = Field(default_factory=lambda: int(os.getenv("POSTS_PER_DAY", "4")))

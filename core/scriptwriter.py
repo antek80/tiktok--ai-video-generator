@@ -25,6 +25,9 @@ class VideoScript(BaseModel):
     caption: str
     hashtags: List[str]
 
+class NoFreshStoryError(RuntimeError):
+    """Raised when every available story has already been posted."""
+
 # ==============================================================================
 # Complete, 100% Unique Curated Factual Library for All 50+ Topics
 # Every single topic has its own unique factual narrative, hook, and tags.
@@ -484,7 +487,13 @@ class ScriptWriter:
             pass
         return None
 
-    def generate_script(self, topic: str, language: str = "en", style: str = "curiosity") -> VideoScript:
+    def generate_script(
+        self,
+        topic: str,
+        language: str = "en",
+        style: str = "curiosity",
+        used_story_titles: Optional[set] = None
+    ) -> VideoScript:
         """Generates a fact-rich, high-retention script with concrete storytelling details (30s format)."""
         # 1. Check if Gemini API is available and valid
         if self.api_key and self.api_key != "your_gemini_api_key_here" and len(self.api_key) > 10:
@@ -617,6 +626,10 @@ Generate a viral, fact-packed JSON script matching this schema:
                     best_score = score
                     best_match_key = key
 
+        if best_match_key and VIRAL_FACTUAL_STORIES.get(best_match_key, {}).get("title") in (used_story_titles or set()):
+            logger.info(f"Curated story '{best_match_key}' was already posted; not re-telling it.")
+            best_match_key = None
+
         if best_match_key and best_match_key in VIRAL_FACTUAL_STORIES:
             story = VIRAL_FACTUAL_STORIES[best_match_key]
             logger.info(f"Using curated factual storytelling script for '{best_match_key}'")
@@ -666,18 +679,30 @@ Generate a viral, fact-packed JSON script matching this schema:
                 )
 
         # 4. Safe Distinct Dynamic Fallback
-        random_story = random.choice(list(VIRAL_FACTUAL_STORIES.values()))
+        # Exclude already-posted stories so this doesn't silently re-tell one under a
+        # different (often placeholder) topic label.
+        used_story_titles = used_story_titles or set()
+        unused_stories = [s for s in VIRAL_FACTUAL_STORIES.values() if s["title"] not in used_story_titles]
+        if not unused_stories:
+            # Re-posting the same narration word-for-word is duplicate content to TikTok
+            # and gets the whole account suppressed, so refuse instead of reusing the pool.
+            raise NoFreshStoryError(
+                "All curated stories have already been posted. Set GEMINI_API_KEY in .env "
+                "or add new stories — refusing to re-post duplicate content."
+            )
+        random_story = random.choice(unused_stories)
+        subject = random_story["title"]
         scenes = [
-            Scene(scene_id=i+1, visual_prompt=f"Cinematic 9:16 {topic}", narration=s, animation="zoom_in")
+            Scene(scene_id=i+1, visual_prompt=f"Cinematic 9:16 vertical shot showing {subject}", narration=s, animation="zoom_in")
             for i, s in enumerate(random_story["sentences"])
         ]
         return VideoScript(
-            title=f"The Mystery of {topic}",
+            title=subject,
             topic=topic,
             target_audience="Mystery seekers",
             hook=random_story["hook"],
             scenes=scenes,
             full_narration=" ".join(random_story["sentences"]),
-            caption=f"Unbelievable facts about {topic} 🤯 What do you think? #facts #mystery #fyp #viral",
-            hashtags=["#facts", "#mystery", "#mindblowing", "#fyp", "#viral"]
+            caption=random_story["caption"],
+            hashtags=random_story["hashtags"]
         )
