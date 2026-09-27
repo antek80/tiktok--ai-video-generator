@@ -66,7 +66,7 @@ def fetch_headlines(max_age_hours: int = MAX_AGE_HOURS) -> List[Dict[str, str]]:
 
 def fetch_article_text(url: str, max_chars: int = 6000) -> str:
     """Plain text of the article's paragraphs — the only facts the script may use."""
-    page = _http_get(url, timeout=10)
+    page = _http_get(url, timeout=25)
     # Drop scripts/menus first — otherwise an unclosed <p> swallows inline JS (Guardian)
     page = re.sub(r"<(script|style|noscript|svg|nav|header|footer|aside|figure)\b[^>]*>.*?</\1>", " ", page, flags=re.S | re.I)
     start, end = page.find("<article"), page.rfind("</article>")
@@ -104,7 +104,9 @@ genuinely disagree about.
 The audience is American: prefer US stories or global stories Americans care about; skip
 purely local UK/European items unless they are internationally famous.
 NEVER pick: stories centred on deaths, killings, disasters with victims, war casualties, terrorism,
-child abuse, suicide, or anything where outrage would mock victims.
+child abuse, suicide, or anything where outrage would mock victims. Also never pick stories about
+race or ethnic groups, genocide claims, religion, immigrants as a group, or conspiracy theories —
+outrage there turns into hate against people, not debate about a decision.
 Return JSON: {{"index": <number from the list>, "reason": "why people will argue about it"}}
 
 Headlines:
@@ -115,6 +117,8 @@ SCRIPT_PROMPT = """You write a 30-40 second TikTok news script in ENGLISH about 
 HARD RULES:
 1. Use ONLY facts stated in the article. No invented numbers, quotes, motives or events.
    Do not attribute anything to a real person unless the article says it.
+   Name only public figures, officials, companies and institutions — never private individuals
+   (interviewees, victims, ordinary people); say "one woman", "a worker" instead.
 2. Strong hook: scene 1 opens with the most provocative TRUE fact from the article.
 3. 4-5 scenes, 85-105 words total, short punchy sentences.
 4. Present both sides fairly; the emotion comes from the facts, not from insults.
@@ -140,16 +144,17 @@ Return JSON matching:
   "hashtags": ["#news", "#debate", "#fyp"]
 }}"""
 
-VERIFY_PROMPT = """Fact-check a TikTok script against its source article.
-For each sentence of the narration decide whether it is fully supported by the article
-(paraphrase is fine; opinions phrased as a question are fine). Any invented number, quote,
-name, date, motive or event is NOT supported.
-Return JSON: {{"supported": true/false, "problems": ["sentence ... - why"]}}
+VERIFY_PROMPT = """Fact-check the statements of a TikTok script against its source article.
+List ONLY statements that assert something the article does not say or contradicts: an invented
+or wrong number, quote, name, date, motive or event. Paraphrase, simplification, rounding and
+reordering are fine and must NOT be listed. If every statement is backed by the article,
+return an empty list.
+Return JSON: {{"unsupported": [{{"statement": "...", "why": "..."}}]}}
 
 ARTICLE:
 {article}
 
-NARRATION:
+STATEMENTS:
 {narration}"""
 
 
@@ -167,7 +172,7 @@ def generate_news_script(used_urls: Set[str]) -> tuple:
         raise NoFreshStoryError("No fresh, unposted headlines in the news feeds.")
 
     tried: Set[int] = set()
-    for _ in range(3):
+    for _ in range(5):
         remaining = [(i, h) for i, h in enumerate(candidates) if i not in tried]
         if not remaining:
             break
@@ -201,9 +206,14 @@ def generate_news_script(used_urls: Set[str]) -> tuple:
             logger.warning(f"Gemini returned an invalid news script: {e}")
             continue
 
-        verdict = _gemini_json(VERIFY_PROMPT.format(article=article, narration=script.full_narration))
-        if not verdict or not verdict.get("supported"):
-            logger.warning(f"News script failed fact check, not posting: {verdict and verdict.get('problems')}")
+        # The closing question is opinion by design — only factual statements are checked
+        statements = [s.narration for s in script.scenes if not s.narration.strip().endswith("?")]
+        verdict = _gemini_json(VERIFY_PROMPT.format(article=article, narration="\n".join(statements)))
+        if verdict is None or not isinstance(verdict.get("unsupported"), list):
+            logger.warning("Fact check returned no usable answer, not posting this story.")
+            continue
+        if verdict["unsupported"]:
+            logger.warning(f"News script failed fact check, not posting: {verdict['unsupported']}")
             continue
 
         return script, story["url"]
